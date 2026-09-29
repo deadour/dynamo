@@ -1,0 +1,50 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-dynamo}
+      POSTGRES_USER: ${POSTGRES_USER:-dynamo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dynamo}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-dynamo}:${POSTGRES_PASSWORD:-dynamo}@db:5432/${POSTGRES_DB:-dynamo}}
+    volumes:
+      - ./backend:/app
+    ports: ["8000:8000"]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    command: sh -c "python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"
+  frontend:
+    build:
+      context: ./frontend
+      target: development
+    environment:
+      VITE_API_URL: http://localhost:8000
+      VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports: ["5173:5173"]
+    depends_on: [backend]
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5173/"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  postgres_data:

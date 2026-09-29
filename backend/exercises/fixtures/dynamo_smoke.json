@@ -1,0 +1,22 @@
+[
+  {
+    "id": "dynamo-smoke-squat",
+    "name": "Sentadilla con barra",
+    "category": "Fuerza",
+    "primaryMuscles": ["Cuádriceps", "Glúteos"],
+    "secondaryMuscles": ["Core"],
+    "equipment": "Barra",
+    "instructions": ["Descendé con control", "Subí manteniendo la espalda neutra"],
+    "images": ["https://example.com/squat-1.jpg", "https://example.com/squat-2.jpg"]
+  },
+  {
+    "id": "dynamo-smoke-row",
+    "name": "Remo con barra",
+    "category": "Fuerza",
+    "primaryMuscles": ["Espalda"],
+    "secondaryMuscles": ["Bíceps"],
+    "equipment": "Barra",
+    "instructions": ["Tirá la barra hacia el torso"],
+    "images": ["https://example.com/row-1.jpg"]
+  }
+]
