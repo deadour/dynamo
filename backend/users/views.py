@@ -18,6 +18,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework.throttling import ScopedRateThrottle
 
 from bodymetrics.views import ImageParser, detect_image_type
+from media_utils import delete_image, upload_image
 
 from .models import User
 
@@ -150,13 +151,21 @@ class AuthViewSet(viewsets.ViewSet):
     def avatar(self, request):
         user = request.user
         if request.method == "DELETE":
-            user.avatar, user.avatar_type, user.avatar_url = None, "", ""
-            user.save(update_fields=["avatar", "avatar_type", "avatar_url", "updated_at"])
+            delete_image(user.avatar_public_id)
+            user.avatar, user.avatar_type, user.avatar_url, user.avatar_public_id = None, "", "", ""
+            user.save(update_fields=["avatar", "avatar_type", "avatar_url", "avatar_public_id", "updated_at"])
             return Response(UserSerializer(user).data)
         data = request.data if isinstance(request.data, bytes) else b""
         content_type = detect_image_type(data)
         if content_type is None or len(data) > MAX_AVATAR_BYTES:
             return Response({"detail": "Subí una imagen JPG, PNG o WebP de hasta 500 KB."}, status=400)
+        uploaded = upload_image(data, "dynamo/avatars")
+        if uploaded:
+            delete_image(user.avatar_public_id)
+            user.avatar, user.avatar_type = None, ""
+            user.avatar_url, user.avatar_public_id = uploaded["url"], uploaded["public_id"]
+            user.save(update_fields=["avatar", "avatar_type", "avatar_url", "avatar_public_id", "updated_at"])
+            return Response(UserSerializer(user).data)
         user.avatar, user.avatar_type = data, content_type
         user.avatar_url = request.build_absolute_uri(reverse("user-avatar", args=[user.id])) + f"?v={int(time.time())}"
         user.save(update_fields=["avatar", "avatar_type", "avatar_url", "updated_at"])

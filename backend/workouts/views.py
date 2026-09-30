@@ -30,7 +30,14 @@ class WorkoutViewSet(viewsets.ModelViewSet):
         return Response(WorkoutExerciseSerializer(obj).data,status=201)
     @action(detail=True,methods=["post"],url_path="finish")
     def finish(self,request,pk=None):
-        obj=self.get_object(); obj.finished_at=timezone.now(); obj.save(update_fields=["finished_at","updated_at"]); return Response(WorkoutSerializer(obj).data)
+        obj=self.get_object(); obj.finished_at=timezone.now(); obj.save(update_fields=["finished_at","updated_at"])
+        from social.achievements import sync_user_achievements
+        unlocked = sync_user_achievements(request.user)
+        from social.notifications import notify_achievements
+        notify_achievements(request.user, unlocked)
+        data = WorkoutSerializer(obj).data
+        data["unlocked_achievements"] = [{"title": row.achievement.title, "icon": row.achievement.icon} for row in unlocked]
+        return Response(data)
 class WorkoutExerciseViewSet(viewsets.ModelViewSet):
     serializer_class=WorkoutExerciseSerializer
     def get_queryset(self):

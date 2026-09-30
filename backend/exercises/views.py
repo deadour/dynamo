@@ -2,7 +2,7 @@ from django.db.models import Count, Max, Q, Value
 from django.db.models.functions import Coalesce, NullIf
 import time
 
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseRedirect
 from django.urls import reverse
 from rest_framework import status, viewsets
 from rest_framework.decorators import api_view, permission_classes
@@ -13,6 +13,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from .models import Exercise
 from bodymetrics.views import ImageParser, detect_image_type
+from media_utils import delete_image, upload_image
 
 from .serializers import CustomExerciseSerializer, ExerciseSerializer
 
@@ -63,13 +64,21 @@ class ExerciseViewSet(viewsets.ModelViewSet):
     def photo(self, request, pk=None):
         exercise = self.get_object()
         if request.method == "DELETE":
-            exercise.photo, exercise.photo_type, exercise.image_1 = None, "", ""
-            exercise.save(update_fields=["photo", "photo_type", "image_1", "updated_at"])
+            delete_image(exercise.photo_public_id)
+            exercise.photo, exercise.photo_type, exercise.photo_url, exercise.photo_public_id, exercise.image_1 = None, "", "", "", ""
+            exercise.save(update_fields=["photo", "photo_type", "photo_url", "photo_public_id", "image_1", "updated_at"])
             return Response(ExerciseSerializer(exercise).data)
         data = request.data if isinstance(request.data, bytes) else b""
         content_type = detect_image_type(data)
         if content_type is None or len(data) > MAX_EXERCISE_PHOTO_BYTES:
             return Response({"detail": "Subí una imagen JPG, PNG o WebP de hasta 800 KB."}, status=status.HTTP_400_BAD_REQUEST)
+        uploaded = upload_image(data, "dynamo/exercises")
+        if uploaded:
+            delete_image(exercise.photo_public_id)
+            exercise.photo, exercise.photo_type = None, ""
+            exercise.photo_url, exercise.photo_public_id, exercise.image_1 = uploaded["url"], uploaded["public_id"], uploaded["url"]
+            exercise.save(update_fields=["photo", "photo_type", "photo_url", "photo_public_id", "image_1", "updated_at"])
+            return Response(ExerciseSerializer(exercise).data)
         exercise.photo, exercise.photo_type = data, content_type
         exercise.image_1 = request.build_absolute_uri(reverse("exercise-photo", args=[exercise.id])) + f"?v={int(time.time())}"
         exercise.save(update_fields=["photo", "photo_type", "image_1", "updated_at"])
@@ -104,7 +113,9 @@ class ExerciseViewSet(viewsets.ModelViewSet):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def exercise_photo(request, exercise_id):
-    exercise = Exercise.objects.filter(pk=exercise_id, is_custom=True).only("photo", "photo_type").first()
+    exercise = Exercise.objects.filter(pk=exercise_id, is_custom=True).only("photo", "photo_type", "photo_url").first()
+    if exercise is not None and exercise.photo_url:
+        return HttpResponseRedirect(exercise.photo_url)
     if exercise is None or not exercise.photo_type:
         return HttpResponse(status=404)
     response = HttpResponse(bytes(exercise.photo), content_type=exercise.photo_type)

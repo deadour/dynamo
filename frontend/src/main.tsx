@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Activity, ArrowLeft, Camera, CalendarDays, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Dumbbell, Flame, History, Home, ListChecks, LogOut, Pencil, Plus, Save, Scale, Search, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Timer, Trash2, TrendingDown, TrendingUp, Trophy, UserRound, Users, X } from "lucide-react";
+import { Activity, ArrowLeft, Bell, Camera, CalendarDays, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Dumbbell, Flame, Globe, Heart, History, Home, ImagePlus, ListChecks, LogOut, MessageCircle, Pencil, Plus, Save, Scale, Search, Send, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Timer, Trash2, TrendingDown, TrendingUp, Trophy, UserRound, Users, X } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import "./styles.css";
 
@@ -172,10 +172,9 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) { co
 // ---------- layout ----------
 const NAV = [
   { to: "/inicio", label: "Inicio", icon: Home },
-  { to: "/ejercicios", label: "Ejercicios", icon: Search },
+  { to: "/rutinas", label: "Rutinas", icon: ListChecks },
   { to: "/entrenar", label: "Entrenar", icon: Dumbbell, main: true },
-  { to: "/rutinas", label: "Rutinas", icon: ListChecks, desktopOnly: true },
-  { to: "/peso", label: "Peso", icon: Scale },
+  { to: "/amigos", label: "Amigos", icon: Users },
   { to: "/perfil", label: "Perfil", icon: UserRound },
 ];
 function Avatar({ user, size = 34 }: { user: any; size?: number }) {
@@ -183,56 +182,314 @@ function Avatar({ user, size = 34 }: { user: any; size?: number }) {
   return user?.avatar_url ? <img className="avatar" src={user.avatar_url} alt="" style={{ width: size, height: size }} /> : <span className="avatar avatar-fallback" style={{ width: size, height: size, fontSize: size * 0.42 }}>{initial}</span>;
 }
 function Layout({ children }: { children: React.ReactNode }) {
-  const navigate = useNavigate(); const user = useContext(UserContext);
+  const navigate = useNavigate(); const user = useContext(UserContext); const unread = useUnreadNotifications();
   const logout = () => void api("/api/auth/logout/", { method: "POST" }).catch(() => undefined).finally(() => { setToken(null); navigate("/ingresar"); });
   return <>
     <header className="topbar">
       <Link to="/inicio" className="brand" aria-label="Dynamo, inicio"><Logo size={34} /><Wordmark height={22} /></Link>
       <nav className="top-nav">{NAV.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to} end><Icon size={16} />{label}</NavLink>)}</nav>
       <div className="header-actions">
+        <NavLink to="/ejercicios" className="icon-btn" aria-label="Buscar ejercicios" title="Ejercicios"><Search size={18} /></NavLink>
+        <NavLink to="/notificaciones" className="icon-btn msg-link" aria-label={unread ? `Notificaciones, ${unread} nuevas` : "Notificaciones"} title="Notificaciones"><Bell size={18} />{unread > 0 && <em className="dot-badge">{unread > 9 ? "9+" : unread}</em>}</NavLink>
         {user?.is_staff && <NavLink to="/admin" className="icon-btn admin-link" aria-label="Administración" title="Administración"><ShieldCheck size={18} /></NavLink>}
         <Link to="/perfil" aria-label="Mi perfil"><Avatar user={user} /></Link>
         <button className="icon-btn header-logout" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={logout}><LogOut size={18} /></button>
       </div>
     </header>
-    <main>{children}</main>
-    <nav className="bottom-nav">{NAV.filter((n) => !n.desktopOnly).map(({ to, label, icon: Icon, main }) => <NavLink key={to} to={to} end className={main ? "main" : undefined}><span className="nav-icon"><Icon size={main ? 22 : 20} /></span>{label}</NavLink>)}</nav>
+    <main key={useLocation().pathname}>{children}</main>
+    <Toasts />
+    <nav className="bottom-nav">{NAV.map(({ to, label, icon: Icon, main }) => <NavLink key={to} to={to} end className={main ? "main" : undefined}><span className="nav-icon"><Icon size={main ? 22 : 20} /></span>{label}</NavLink>)}</nav>
   </>;
 }
 
 // ---------- pantallas ----------
+// Avisos cortos y tranquilos (logros, confirmaciones). Se disparan desde cualquier parte con toast().
+const toast = (text: string, icon?: string) => window.dispatchEvent(new CustomEvent("dynamo:toast", { detail: { text, icon } }));
+function Toasts() {
+  const [items, setItems] = useState<any[]>([]);
+  useEffect(() => {
+    const on = (e: Event) => { const id = Math.random(); setItems((old) => [...old, { id, ...(e as CustomEvent).detail }]); setTimeout(() => setItems((old) => old.filter((t) => t.id !== id)), 4200); };
+    window.addEventListener("dynamo:toast", on); return () => window.removeEventListener("dynamo:toast", on);
+  }, []);
+  return <div className="toasts" aria-live="polite">{items.map((t) => <div className="toast-item" key={t.id}>{t.icon && <span className="toast-icon">{t.icon}</span>}<span>{t.text}</span></div>)}</div>;
+}
+function useUnreadNotifications() {
+  const [count, setCount] = useState(0); const location = useLocation();
+  const refresh = () => void api("/api/notifications/unread/").then((d) => setCount(d.count)).catch(() => undefined);
+  useEffect(refresh, [location.pathname, location.search]);
+  useEffect(() => { const t = setInterval(refresh, 60000); window.addEventListener("dynamo:notifications-read", refresh); return () => { clearInterval(t); window.removeEventListener("dynamo:notifications-read", refresh); }; }, []);
+  return count;
+}
+const NOTIF_ICONS: Record<string, React.ReactNode> = { follow: <UserRound size={16} />, message: <MessageCircle size={16} />, comment: <MessageCircle size={16} />, like: <Heart size={16} />, achievement: <Trophy size={16} /> };
+function Notifications() {
+  const [rows, setRows] = useState<any[] | null>(null); const navigate = useNavigate();
+  useEffect(() => { void api("/api/notifications/").then((d) => { setRows(d); if (d.some((n: any) => !n.read)) void api("/api/notifications/read-all/", { method: "POST" }).then(() => window.dispatchEvent(new Event("dynamo:notifications-read"))); }); }, []);
+  if (!rows) return <Loading />;
+  return <>
+    <PageHead eyebrow="Novedades" title="Notificaciones" />
+    {rows.length ? <section className="panel"><div className="list">{rows.map((n) => <button type="button" key={n.id} className={`row link-row as-button notif ${n.read ? "" : "unread"}`} onClick={() => n.link && navigate(n.link)}>
+      <span className={`notif-icon kind-${n.kind}`}>{n.actor && n.kind !== "achievement" ? <Avatar user={n.actor} size={40} /> : n.icon ? <span className="notif-emoji">{n.icon}</span> : NOTIF_ICONS[n.kind]}{n.actor && <i>{NOTIF_ICONS[n.kind]}</i>}</span>
+      <span className="row-main no-cap">{n.text}<small>{timeAgo(n.created_at)}</small></span>
+      {!n.read && <span className="unread-dot" aria-label="Nueva" />}
+    </button>)}</div></section> : <section className="panel"><Empty icon={<Bell />} title="Todo tranquilo por acá">Te avisamos cuando alguien te siga, te escriba o desbloquees un logro.</Empty></section>}
+  </>;
+}
+
 function Dashboard() {
-  const [data, setData] = useState<any>(); const user = useContext(UserContext);
-  useEffect(() => { void api("/api/dashboard/summary/").then(setData); }, []);
+  const [data, setData] = useState<any>(); const [routines, setRoutines] = useState<any[]>([]); const user = useContext(UserContext); const navigate = useNavigate();
+  const active = JSON.parse(localStorage.getItem(ACTIVE_KEY) || "null"); const elapsed = useElapsed(active?.started_at);
+  useEffect(() => { void api("/api/dashboard/summary/").then(setData); void api("/api/routines/").then((d) => setRoutines((d.results || d).filter((r: any) => r.items.length).slice(0, 3))).catch(() => undefined); }, []);
   const hour = new Date().getHours(); const greeting = hour < 12 ? "Buen día" : hour < 20 ? "Buenas tardes" : "Buenas noches";
   const firstName = (user?.name || "").split(" ")[0];
   const history = data?.weight_history || [];
   const delta = history.length > 1 ? history[history.length - 1].weight_kg - history[0].weight_kg : null;
   return <>
-    <PageHead eyebrow={new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })} title={<>{greeting}{firstName && <>, <span className="accent">{firstName}</span></>}</>} action={<Link className="btn primary" to="/entrenar"><Plus size={18} /> Entrenar</Link>} />
-    <div className="stats">
-      <Stat label="Peso actual" icon={<Scale size={16} />} value={kg(data?.weight_current)} unit="kg">
-        {delta !== null && <div className={`delta ${delta > 0 ? "up" : delta < 0 ? "down" : ""}`}>{delta > 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}{delta > 0 ? "+" : ""}{kg(delta)} kg en 30 días</div>}
-        {history.length > 1 && <Sparkline data={history} dataKey="weight_kg" />}
-      </Stat>
-      <Stat label="Sesiones · 30 días" icon={<CalendarDays size={16} />} tone="blue" value={data?.workouts_30d ?? "—"}>
-        <div className="meter"><i style={{ width: `${Math.min(100, ((data?.workouts_30d || 0) / 12) * 100)}%` }} /></div>
-        <div className="hint">Objetivo sugerido: 12 sesiones</div>
-      </Stat>
-      <Stat label="Volumen · 30 días" icon={<Flame size={16} />} tone="orange" value={data ? kg(Math.round(data.volume_30d)) : "—"} unit="kg">
-        <div className="hint">Peso total movido</div>
-      </Stat>
+    <PageHead eyebrow={new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })} title={<>{greeting}{firstName && <>, <span className="accent">{firstName}</span></>}</>} />
+    <section className={`train-hero ${active ? "live" : ""}`}>
+      {active ? <>
+        <div><small><span className="live-dot" /> Entrenamiento en curso</small><h2>{active.routine?.name || "Entrenamiento libre"}</h2><p className="hero-timer">{elapsed}</p></div>
+        <Link className="btn primary lg" to="/entrenar">Continuar <ChevronRight size={18} /></Link>
+      </> : <>
+        <div><small>Hoy</small><h2>¿Qué entrenamos?</h2></div>
+        <div className="hero-actions">
+          {routines.map((r) => <button type="button" key={r.id} className="hero-routine" onClick={() => navigate("/entrenar", { state: { routine: r } })}><span className="thumb-stack">{r.items.slice(0, 2).map((it: any) => <ExerciseThumb key={it.id} src={it.image} size={28} />)}</span><span className="hr-name">{r.name}<small>{r.items.length} ejercicios</small></span><ChevronRight size={16} /></button>)}
+          <Link className="btn primary lg" to="/entrenar"><Dumbbell size={18} /> {routines.length ? "Entrenamiento libre" : "Empezar a entrenar"}</Link>
+        </div>
+      </>}
+    </section>
+    <div className="mini-stats">
+      <Link to="/entrenamientos" className="mini-stat"><small>Sesiones</small><b>{data?.workouts_30d ?? "—"}</b><span>últimos 30 días</span></Link>
+      <Link to="/entrenamientos" className="mini-stat"><small>Volumen</small><b>{data ? kg(Math.round(data.volume_30d / 1000 * 10) / 10) : "—"}<em>t</em></b><span>últimos 30 días</span></Link>
+      <Link to="/peso" className="mini-stat"><small>Peso</small><b>{kg(data?.weight_current)}{data?.weight_current ? <em>kg</em> : null}</b>{delta !== null ? <span className={delta < 0 ? "down" : delta > 0 ? "up" : ""}>{delta > 0 ? "+" : ""}{kg(delta)} kg en 30 días</span> : <span>Registrar</span>}</Link>
     </div>
-    {data?.prs && (data.prs.best_weight > 0 || data.prs.best_1rm > 0) && <section className="pr-strip">
-      <Trophy size={20} />
-      <div><small>Mejor peso</small><b>{kg(data.prs.best_weight)} kg</b></div>
-      <div><small>Mejor 1RM estimado</small><b>{kg(data.prs.best_1rm)} kg</b></div>
-    </section>}
     <section className="panel">
-      <div className="section-head"><h3>Entrenamientos recientes</h3><Link to="/entrenamientos">Ver todos <ChevronRight size={15} /></Link></div>
-      {data?.recent_workouts?.length ? <div className="list">{data.recent_workouts.map((w: any) => <Link className="row link-row" to={`/entrenamiento?id=${w.id}`} key={w.id}><span className="row-icon"><Dumbbell size={17} /></span><span className="row-main">{w.name}<small>{longDate(w.date)}</small></span><strong>{kg(Math.round(w.volume))} <span>kg</span></strong><ChevronRight size={16} className="chev" /></Link>)}</div> : <Empty icon={<Dumbbell />} title="Todavía no hay entrenamientos"><Link to="/entrenar" className="btn ghost">Registrar el primero</Link></Empty>}
+      <div className="section-head"><h3>Últimos entrenamientos</h3><Link to="/entrenamientos">Ver todos <ChevronRight size={15} /></Link></div>
+      {data?.recent_workouts?.length ? <div className="list">{data.recent_workouts.slice(0, 3).map((w: any) => <Link className="row link-row" to={`/entrenamiento?id=${w.id}`} key={w.id}><span className="row-icon"><Dumbbell size={17} /></span><span className="row-main">{w.name}<small>{longDate(w.date)}</small></span><strong>{kg(Math.round(w.volume))} <span>kg</span></strong><ChevronRight size={16} className="chev" /></Link>)}</div> : <Empty icon={<Dumbbell />} title="Todavía no entrenaste">Tu primer entrenamiento va a aparecer acá.</Empty>}
     </section>
   </>;
+}
+
+// ---------- social: amigos, feed, mensajes y logros ----------
+const timeAgo = (iso: string) => {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return "recién"; if (mins < 60) return `hace ${mins} min`;
+  const hours = Math.floor(mins / 60); if (hours < 24) return `hace ${hours} h`;
+  if (hours < 48) return "ayer";
+  return new Date(iso).toLocaleDateString("es-AR", { day: "numeric", month: "short" });
+};
+const firstNameOf = (name = "") => name.split(" ")[0] || name;
+function VisibilityToggle({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return <div className="vis-toggle" role="radiogroup" aria-label="Quién puede verlo">
+    <button type="button" role="radio" aria-checked={value === "friends"} className={value === "friends" ? "on" : ""} onClick={() => onChange("friends")}><Users size={14} /> Solo amigos</button>
+    <button type="button" role="radio" aria-checked={value === "public"} className={value === "public" ? "on" : ""} onClick={() => onChange("public")}><Globe size={14} /> Público</button>
+  </div>;
+}
+function Composer({ onPosted }: { onPosted: (post: any) => void }) {
+  const user = useContext(UserContext); const [open, setOpen] = useState(false); const [text, setText] = useState(""); const [visibility, setVisibility] = useState("friends");
+  const [photo, setPhoto] = useState<File | null>(null); const [preview, setPreview] = useState(""); const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const fileInput = useRef<HTMLInputElement>(null);
+  const reset = () => { setOpen(false); setText(""); setPhoto(null); setPreview(""); setError(""); };
+  const choose = (file?: File) => { if (!file) return; setPhoto(file); setPreview(URL.createObjectURL(file)); setOpen(true); };
+  const publish = async () => {
+    if (!text.trim() && !photo) return setError("Escribí algo o sumá una foto.");
+    setBusy(true); setError("");
+    try {
+      let post = await api(`/api/posts/${photo ? "?with_photo=1" : ""}`, { method: "POST", body: JSON.stringify({ text: text.trim(), visibility }) });
+      if (photo) post = await api(`/api/posts/${post.id}/photo/`, { method: "PUT", body: await compressImage(photo, 1400) });
+      onPosted(post); reset();
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  };
+  return <section className={`panel composer ${open ? "open" : ""}`}>
+    <input ref={fileInput} type="file" accept="image/*" hidden onChange={(e) => { choose(e.target.files?.[0]); e.target.value = ""; }} />
+    {!open ? <div className="composer-trigger"><Avatar user={user} size={36} /><button type="button" onClick={() => setOpen(true)}>¿Cómo te fue hoy?</button><button type="button" className="icon-btn" aria-label="Sumar foto" onClick={() => fileInput.current?.click()}><ImagePlus size={18} /></button></div> : <>
+      <textarea autoFocus rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder="Contá cómo te fue, un récord, lo que quieras…" maxLength={1000} />
+      {preview && <div className="composer-preview"><img src={preview} alt="" /><button type="button" className="icon-btn sm" aria-label="Quitar foto" onClick={() => { setPhoto(null); setPreview(""); }}><X size={14} /></button></div>}
+      <div className="composer-bar">
+        <button type="button" className="icon-btn" aria-label="Sumar foto" onClick={() => fileInput.current?.click()}><ImagePlus size={18} /></button>
+        <VisibilityToggle value={visibility} onChange={setVisibility} />
+        <span className="grow" />
+        <button type="button" className="btn secondary" onClick={reset}>Cancelar</button>
+        <button type="button" className="btn primary" onClick={() => void publish()} disabled={busy}>{busy ? "Publicando…" : "Publicar"}</button>
+      </div>
+      {error && <div className="error inline">{error}</div>}
+    </>}
+  </section>;
+}
+function WorkoutCard({ w }: { w: any }) {
+  return <div className="post-workout">
+    <div className="pw-head"><span className="row-icon"><Dumbbell size={17} /></span><div><b>{w.name}</b>{w.exercises?.length > 0 && <small>{w.exercises.join(" · ")}</small>}</div></div>
+    <div className="pw-stats"><span><b>{w.duration_min ?? "—"}</b>min</span><span><b>{w.set_count}</b>series</span><span><b>{kg(w.volume)}</b>kg</span></div>
+  </div>;
+}
+function PostCard({ post, onChange, onDelete }: { post: any; onChange: (p: any) => void; onDelete: () => void }) {
+  const [comments, setComments] = useState<any[] | null>(null); const [comment, setComment] = useState(""); const [pop, setPop] = useState(false);
+  const like = () => {
+    setPop(true); setTimeout(() => setPop(false), 450);
+    onChange({ ...post, liked: !post.liked, like_count: post.like_count + (post.liked ? -1 : 1) });
+    void api(`/api/posts/${post.id}/like/`, { method: "POST" }).then((d) => onChange({ ...post, liked: d.liked, like_count: d.like_count }));
+  };
+  const toggleComments = () => comments ? setComments(null) : void api(`/api/posts/${post.id}/comments/`).then(setComments);
+  const send = () => { if (!comment.trim()) return; void api(`/api/posts/${post.id}/comments/`, { method: "POST", body: JSON.stringify({ text: comment.trim() }) }).then((c) => { setComments((old) => [...(old || []), c]); setComment(""); onChange({ ...post, comment_count: post.comment_count + 1 }); }); };
+  return <article className="panel post" id={`post-${post.id}`}>
+    <header className="post-head">
+      <Link to={`/usuario?id=${post.author.id}`} className="post-author"><Avatar user={post.author} size={40} /><span><b>{post.author.name}</b><small>{timeAgo(post.created_at)} · {post.visibility === "public" ? <><Globe size={11} /> Público</> : <><Users size={11} /> Amigos</>}</small></span></Link>
+      {post.is_mine && <ConfirmButton iconOnly label="Borrar publicación" confirmLabel="Borrar" onConfirm={() => void api(`/api/posts/${post.id}/`, { method: "DELETE" }).then(onDelete)} />}
+    </header>
+    {post.text && <p className="post-text">{post.text}</p>}
+    {post.workout_summary && <WorkoutCard w={post.workout_summary} />}
+    {post.achievement_info && <div className="post-achievement"><span>{post.achievement_info.icon}</span><div><small>Logro desbloqueado</small><b>{post.achievement_info.title}</b><p>{post.achievement_info.description}</p></div></div>}
+    {post.image_url && <img className="post-image" src={post.image_url} alt="" loading="lazy" />}
+    <footer className="post-actions">
+      <button type="button" className={`like ${post.liked ? "on" : ""} ${pop ? "pop" : ""}`} aria-pressed={post.liked} aria-label="Me gusta" onClick={like}><Heart size={18} fill={post.liked ? "currentColor" : "none"} />{post.like_count > 0 && <span>{post.like_count}</span>}</button>
+      <button type="button" className={comments ? "on" : ""} aria-label="Comentarios" onClick={toggleComments}><MessageCircle size={18} />{post.comment_count > 0 && <span>{post.comment_count}</span>}</button>
+    </footer>
+    {comments && <div className="comments">
+      {comments.map((c) => <div className="comment" key={c.id}><Avatar user={c.author} size={28} /><p><b>{c.author.name}</b> {c.text}</p></div>)}
+      <div className="comment-form"><input value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder="Escribí un comentario…" enterKeyHint="send" /><button type="button" className="icon-btn" aria-label="Enviar" onClick={send}><Send size={16} /></button></div>
+    </div>}
+  </article>;
+}
+function PostList({ posts, setPosts }: { posts: any[]; setPosts: (fn: (old: any[]) => any[]) => void }) {
+  return <>{posts.map((p) => <PostCard key={p.id} post={p} onChange={(next) => setPosts((old) => old.map((x) => x.id === next.id ? next : x))} onDelete={() => setPosts((old) => old.filter((x) => x.id !== p.id))} />)}</>;
+}
+function FeedTab({ onFindPeople }: { onFindPeople: () => void }) {
+  const [posts, setPosts] = useState<any[]>([]); const [loaded, setLoaded] = useState(false);
+  useEffect(() => { void api("/api/posts/").then((d) => { setPosts(d.results || d); setLoaded(true); }); }, []);
+  useEffect(() => { if (!loaded || !window.location.hash.startsWith("#post-")) return; const el = document.getElementById(window.location.hash.slice(1)); if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.classList.add("flash"); } }, [loaded]);
+  return <div className="feed">
+    <Composer onPosted={(p) => setPosts((old) => [p, ...old])} />
+    <PostList posts={posts} setPosts={setPosts} />
+    {loaded && !posts.length && <section className="panel"><Empty icon={<Users />} title="Todavía no hay actividad">Seguí a tus amigos para ver cómo entrenan, o compartí tu último entrenamiento.<button type="button" className="btn ghost" onClick={onFindPeople}><Search size={16} /> Buscar amigos</button></Empty></section>}
+  </div>;
+}
+function PersonRow({ person, onChange }: { person: any; onChange: (p: any) => void }) {
+  const [busy, setBusy] = useState(false);
+  const follow = () => { setBusy(true); void api(`/api/profiles/${person.id}/follow/`, { method: person.is_following ? "DELETE" : "POST" }).then(onChange).finally(() => setBusy(false)); };
+  const tag = person.is_friend ? "Amigos" : person.follows_you ? "Te sigue" : "";
+  return <div className="row person-row">
+    <Link to={`/usuario?id=${person.id}`} className="person-link"><Avatar user={person} size={42} /><span className="row-main">{person.name}{tag && <small className="no-cap">{tag}</small>}</span></Link>
+    <button type="button" className={`btn ${person.is_following ? "secondary" : "primary"} follow-btn`} onClick={follow} disabled={busy}>{person.is_friend ? <><Check size={14} /> Amigos</> : person.is_following ? "Siguiendo" : person.follows_you ? "Seguir también" : "Seguir"}</button>
+  </div>;
+}
+function PeopleTab() {
+  const [query, setQuery] = useState(""); const [results, setResults] = useState<any[]>([]); const [lists, setLists] = useState<any>(null);
+  const loadLists = () => Promise.all([api("/api/profiles/"), api("/api/profiles/?tab=followers"), api("/api/profiles/?tab=following")]).then(([friends, followers, following]) => setLists({ friends, followers: followers.filter((p: any) => !p.is_following), following: following.filter((p: any) => !p.is_friend) }));
+  useEffect(() => { void loadLists(); }, []);
+  useEffect(() => { if (query.trim().length < 2) { setResults([]); return; } const t = setTimeout(() => void api(`/api/profiles/?search=${encodeURIComponent(query.trim())}`).then(setResults), 250); return () => clearTimeout(t); }, [query]);
+  const changed = (p: any) => { setResults((old) => old.map((x) => x.id === p.id ? p : x)); void loadLists(); };
+  const block = (title: string, rows: any[], hint?: string) => <section className="panel"><div className="section-head"><h3>{title}</h3><span className="pill">{rows.length}</span></div>{hint && <p className="hint">{hint}</p>}<div className="list">{rows.map((p) => <PersonRow key={p.id} person={p} onChange={changed} />)}</div></section>;
+  return <div className="people">
+    <div className="search"><Search size={18} /><input type="search" aria-label="Buscar personas" placeholder="Buscar por nombre o email…" value={query} onChange={(e) => setQuery(e.target.value)} autoCapitalize="none" autoCorrect="off" /></div>
+    {query.trim().length >= 2 ? <section className="panel">{results.length ? <div className="list">{results.map((p) => <PersonRow key={p.id} person={p} onChange={changed} />)}</div> : <p className="hint">No encontramos a nadie con ese nombre.</p>}</section> : lists && <>
+      {lists.followers.length > 0 && block("Te siguen", lists.followers, "Seguilos también y quedan como amigos.")}
+      {lists.friends.length ? block("Amigos", lists.friends) : <section className="panel"><Empty icon={<Users />} title="Todavía no tenés amigos acá">Buscá a alguien por su nombre. Cuando se siguen entre los dos, quedan como amigos.</Empty></section>}
+      {lists.following.length > 0 && block("Siguiendo", lists.following, "Todavía no te siguen.")}
+    </>}
+  </div>;
+}
+function Friends() {
+  const [params, setParams] = useSearchParams(); const tab = params.get("tab") === "personas" ? "personas" : "actividad";
+  return <>
+    <PageHead eyebrow="Comunidad" title="Amigos" action={<Link to="/mensajes" className="btn secondary"><MessageCircle size={16} /> Mensajes</Link>} />
+    <div className="segmented" role="tablist">
+      <button type="button" role="tab" aria-selected={tab === "actividad"} className={tab === "actividad" ? "on" : ""} onClick={() => setParams({})}>Actividad</button>
+      <button type="button" role="tab" aria-selected={tab === "personas"} className={tab === "personas" ? "on" : ""} onClick={() => setParams({ tab: "personas" })}>Personas</button>
+      <span className="seg-indicator" style={{ transform: `translateX(${tab === "actividad" ? 0 : 100}%)` }} />
+    </div>
+    {tab === "actividad" ? <FeedTab onFindPeople={() => setParams({ tab: "personas" })} /> : <PeopleTab />}
+  </>;
+}
+function UserProfile() {
+  const id = useIdParam(); const [p, setP] = useState<any>(); const [posts, setPosts] = useState<any[]>([]); const [missing, setMissing] = useState(false);
+  const load = () => { void api(`/api/profiles/${id}/`).then(setP).catch(() => setMissing(true)); void api(`/api/posts/?user=${id}`).then((d) => setPosts(d.results || d)).catch(() => undefined); };
+  useEffect(load, [id]);
+  if (missing) return <section className="panel"><Empty icon={<UserRound />} title="No encontramos ese perfil" /></section>;
+  if (!p) return <Loading />;
+  const follow = () => void api(`/api/profiles/${id}/follow/`, { method: p.is_following ? "DELETE" : "POST" }).then(load);
+  const them = firstNameOf(p.name);
+  const compare: [string, number, number, string][] = [["Entrenamientos", p.my_stats.workouts_30d, p.stats.workouts_30d, ""], ["Volumen", p.my_stats.volume_30d, p.stats.volume_30d, "kg"]];
+  return <>
+    <PageHead back="/amigos?tab=personas" eyebrow={p.is_me ? "Así te ven los demás" : p.is_friend ? "Amigos" : p.follows_you ? "Te sigue" : "Perfil"} title={p.name} />
+    <section className="panel user-hero">
+      <Avatar user={p} size={84} />
+      <div className="user-counts"><span><b>{p.stats.workouts_total}</b>entrenos</span><span><b>{p.followers}</b>seguidores</span><span><b>{p.following}</b>siguiendo</span></div>
+      {!p.is_me && <div className="user-actions">
+        <button type="button" className={`btn ${p.is_following ? "secondary" : "primary"}`} onClick={follow}>{p.is_friend ? <><Check size={16} /> Amigos</> : p.is_following ? "Siguiendo" : p.follows_you ? "Seguir también" : "Seguir"}</button>
+        {p.is_friend && <Link className="btn secondary" to={`/mensajes?with=${p.id}`}><MessageCircle size={16} /> Mensaje</Link>}
+      </div>}
+    </section>
+    {!p.is_me && <section className="panel">
+      <div className="section-head"><h3>Vos vs {them} · 30 días</h3></div>
+      <div className="versus">{compare.map(([label, mine, theirs, unit]) => { const max = Math.max(mine, theirs, 1); return <div className="vs-row" key={label}>
+        <small>{label}</small>
+        <div className={`vs-bar me ${mine >= theirs && mine > 0 ? "lead" : ""}`}><i style={{ width: `${(mine / max) * 100}%` }} /><span>Vos</span><b>{kg(mine)}{unit && ` ${unit}`}</b></div>
+        <div className={`vs-bar them ${theirs > mine ? "lead" : ""}`}><i style={{ width: `${(theirs / max) * 100}%` }} /><span>{them}</span><b>{kg(theirs)}{unit && ` ${unit}`}</b></div>
+      </div>; })}</div>
+    </section>}
+    {p.achievements.length > 0 && <section className="panel"><div className="section-head"><h3>Logros</h3><span className="pill">{p.achievements.length}</span></div><div className="badge-row">{p.achievements.map((a: any) => <span className="ach-badge" key={a.title} title={`${a.title}: ${a.description}`}><span>{a.icon}</span><small>{a.title}</small></span>)}</div></section>}
+    {p.recent_workouts ? p.recent_workouts.length > 0 && <section className="panel"><div className="section-head"><h3>Últimos entrenamientos</h3></div><div className="stack tight">{p.recent_workouts.map((w: any, i: number) => <div key={i}><small className="field-label">{timeAgo(w.date)}</small><WorkoutCard w={w} /></div>)}</div></section>
+      : !p.is_me && <section className="panel"><p className="hint lock-hint"><Users size={15} /> Cuando se sigan entre los dos, vas a ver sus entrenamientos.</p></section>}
+    {posts.length > 0 && <div className="feed"><h2 className="section-title">Publicaciones</h2><PostList posts={posts} setPosts={setPosts} /></div>}
+  </>;
+}
+function Messages() {
+  const withId = useSearchParams()[0].get("with");
+  return withId ? <Thread id={withId} /> : <Conversations />;
+}
+function Conversations() {
+  const [rows, setRows] = useState<any[] | null>(null); const [friends, setFriends] = useState<any[]>([]);
+  useEffect(() => { void api("/api/messages/").then(setRows); void api("/api/profiles/").then(setFriends).catch(() => undefined); }, []);
+  if (!rows) return <Loading />;
+  const talked = new Set(rows.map((r) => r.with.id)); const others = friends.filter((f) => !talked.has(f.id));
+  return <>
+    <PageHead back="/amigos" eyebrow="Amigos" title="Mensajes" />
+    {rows.length > 0 && <section className="panel"><div className="list">{rows.map((c) => <Link key={c.with.id} to={`/mensajes?with=${c.with.id}`} className="row link-row conversation">
+      <Avatar user={c.with} size={44} /><span className="row-main">{c.with.name}<small className="no-cap">{c.last}</small></span>
+      <span className="conv-meta"><small>{timeAgo(c.last_at)}</small>{c.unread > 0 && <em>{c.unread}</em>}</span>
+    </Link>)}</div></section>}
+    {others.length > 0 && <section className="panel"><div className="section-head"><h3>Escribile a un amigo</h3></div><div className="friend-strip">{others.map((f) => <Link key={f.id} to={`/mensajes?with=${f.id}`}><Avatar user={f} size={52} /><small>{firstNameOf(f.name)}</small></Link>)}</div></section>}
+    {!rows.length && !others.length && <section className="panel"><Empty icon={<MessageCircle />} title="Sin mensajes">Podés escribirle a tus amigos: gente que te sigue y que vos seguís.<Link className="btn ghost" to="/amigos?tab=personas"><Search size={16} /> Buscar amigos</Link></Empty></section>}
+  </>;
+}
+function Thread({ id }: { id: string }) {
+  const [data, setData] = useState<any>(); const [text, setText] = useState(""); const [error, setError] = useState(""); const end = useRef<HTMLDivElement>(null);
+  const load = () => void api(`/api/messages/?with=${id}`).then(setData).catch((e: Error) => setError(e.message));
+  useEffect(() => { load(); const t = setInterval(load, 8000); return () => clearInterval(t); }, [id]);
+  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [data?.messages?.length]);
+  if (!data) return error ? <section className="panel"><Empty icon={<MessageCircle />} title="No se pudo abrir la conversación">{error}</Empty></section> : <Loading />;
+  const send = () => { if (!text.trim()) return; const body = text.trim(); setText(""); void api("/api/messages/", { method: "POST", body: JSON.stringify({ recipient: id, text: body }) }).then((m) => setData((d: any) => ({ ...d, messages: [...d.messages, m] }))).catch((e: Error) => { setError(e.message); setText(body); }); };
+  return <>
+    <PageHead back="/mensajes" eyebrow="Mensajes" title={<Link to={`/usuario?id=${id}`} className="thread-title"><Avatar user={data.with} size={36} />{data.with.name}</Link>} />
+    <section className="panel thread">
+      <div className="bubbles">{data.messages.length ? data.messages.map((m: any, i: number) => { const prev = data.messages[i - 1]; return <div key={m.id} className={`bubble ${m.mine ? "mine" : ""} ${prev && prev.mine === m.mine ? "grouped" : ""}`}><p>{m.text}</p><small>{new Date(m.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</small></div>; }) : <p className="hint center">Todavía no se escribieron. ¡Mandá el primero!</p>}<div ref={end} /></div>
+      {data.can_write ? <div className="thread-input"><input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder="Escribí un mensaje…" enterKeyHint="send" /><button type="button" className="btn primary" aria-label="Enviar" onClick={send}><Send size={17} /></button></div>
+        : <p className="hint lock-hint"><Users size={15} /> Solo pueden escribirse si se siguen entre los dos.</p>}
+      {error && <div className="error inline">{error}</div>}
+    </section>
+  </>;
+}
+function MyAchievements() {
+  const [rows, setRows] = useState<any[]>([]); const [all, setAll] = useState(false);
+  useEffect(() => { void api("/api/achievements/").then(setRows).catch(() => undefined); }, []);
+  if (!rows.length) return null;
+  const unlocked = rows.filter((r) => r.unlocked_at); const ordered = [...unlocked, ...rows.filter((r) => !r.unlocked_at)];
+  return <section className="panel achievements">
+    <div className="section-head"><h3><Trophy size={16} /> Logros</h3><span className="pill">{unlocked.length}/{rows.length}</span></div>
+    <div className="ach-grid">{(all ? ordered : ordered.slice(0, 8)).map((a) => <div key={a.code} className={`ach ${a.unlocked_at ? "" : "locked"}`} title={a.description}><span>{a.icon}</span><b>{a.title}</b><small>{a.unlocked_at ? shortDate(a.unlocked_at) : a.description}</small></div>)}</div>
+    {rows.length > 8 && <button type="button" className="link-btn" onClick={() => setAll(!all)}>{all ? "Ver menos" : `Ver los ${rows.length}`}</button>}
+  </section>;
+}
+function ShareWorkoutSheet({ workoutId, onClose }: { workoutId: string; onClose: () => void }) {
+  const navigate = useNavigate(); const [text, setText] = useState(""); const [visibility, setVisibility] = useState("friends"); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
+  const share = () => { setBusy(true); void api("/api/posts/", { method: "POST", body: JSON.stringify({ workout: workoutId, text: text.trim(), visibility }) }).then(() => { toast("Publicado en tu actividad", "✅"); navigate("/amigos"); }).catch((e: Error) => { setError(e.message); setBusy(false); }); };
+  return <div className="sheet-backdrop" onClick={onClose}><div className="sheet" role="dialog" aria-modal="true" aria-label="Compartir entrenamiento" onClick={(e) => e.stopPropagation()}>
+    <div className="sheet-head"><h3>Compartir entrenamiento</h3><IconButton label="Cerrar" onClick={onClose}><X size={16} /></IconButton></div>
+    <div className="sheet-body form">
+      <label>Mensaje (opcional)<textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder="Ej: ¡Nuevo récord en sentadilla!" /></label>
+      <div><small className="field-label">Quién lo ve</small><VisibilityToggle value={visibility} onChange={setVisibility} /></div>
+      {error && <div className="error inline">{error}</div>}
+    </div>
+    <div className="sheet-foot"><button className="btn secondary" onClick={onClose}>Cancelar</button><button className="btn primary" onClick={share} disabled={busy}><Share2 size={16} /> {busy ? "Compartiendo…" : "Compartir"}</button></div>
+  </div></div>;
 }
 
 function Exercises() {
@@ -412,7 +669,8 @@ function WorkoutRecorder() {
     if (!rest.length) await api(`/api/workout-exercises/${block.weId}/`, { method: "DELETE" });
     setBlocks((old) => rest.length ? old.map((b) => b.weId === block.weId ? { ...b, sets: rest } : b) : old.filter((b) => b.weId !== block.weId));
   };
-  const finish = () => void api(`/api/workouts/${workout.id}/finish/`, { method: "POST" }).then(clearActive);
+  const navigate = useNavigate();
+  const finish = () => void api(`/api/workouts/${workout.id}/finish/`, { method: "POST" }).then((d) => { const id = workout.id; clearActive(); toast("Entrenamiento guardado", "💪"); (d?.unlocked_achievements || []).forEach((a: any) => toast(`Logro desbloqueado: ${a.title}`, a.icon)); navigate(`/entrenamiento?id=${id}`); });
   const discard = () => void api(`/api/workouts/${workout.id}/`, { method: "DELETE" }).then(clearActive);
   const allSets = blocks.flatMap((b) => b.sets); const volume = allSets.reduce((sum, s) => sum + Number(s.weight_kg) * Number(s.reps), 0);
   const setsOf = (exerciseId: string) => blocks.find((b) => b.exerciseId === exerciseId)?.sets.length || 0;
@@ -554,7 +812,7 @@ function EditableSet({ set, index, onSaved, onDelete }: { set: any; index: numbe
   return <div className="set-line"><span className="set-num">{index + 1}</span><span>{kg(set.weight_kg)} <small>kg</small></span><span>{set.reps} <small>reps</small></span><div className="line-actions"><IconButton label="Editar serie" onClick={() => setEditing(true)}><Pencil size={14} /></IconButton><ConfirmButton iconOnly label="Borrar serie" confirmLabel="Borrar" onConfirm={onDelete} /></div></div>;
 }
 function WorkoutDetail() {
-  const id = useIdParam(); const navigate = useNavigate(); const [data, setData] = useState<any>(); const [renaming, setRenaming] = useState(false); const [name, setName] = useState("");
+  const id = useIdParam(); const navigate = useNavigate(); const [data, setData] = useState<any>(); const [sharing, setSharing] = useState(false); const [renaming, setRenaming] = useState(false); const [name, setName] = useState("");
   useEffect(() => { void api(`/api/workouts/${id}/`).then((d) => { setData(d); setName(d.name); }); }, [id]);
   if (!data) return <Loading />;
   const allSets = data.exercises.flatMap((e: any) => e.sets); const volume = allSets.reduce((sum: number, s: any) => sum + Number(s.weight_kg) * Number(s.reps), 0);
@@ -565,7 +823,8 @@ function WorkoutDetail() {
   const removeSet = (exId: string, setId: string) => void api(`/api/workout-sets/${setId}/`, { method: "DELETE" }).then(() => updateExercise(exId, (e) => ({ ...e, sets: e.sets.filter((s: any) => s.id !== setId) })));
   const title = renaming ? <span className="rename"><input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && rename()} autoFocus /><IconButton label="Guardar nombre" onClick={rename}><Check size={16} /></IconButton><IconButton label="Cancelar" onClick={() => { setName(data.name); setRenaming(false); }}><X size={16} /></IconButton></span> : <span className="title-edit">{data.name}<IconButton label="Renombrar" onClick={() => setRenaming(true)}><Pencil size={15} /></IconButton></span>;
   return <>
-    <PageHead back="/entrenamientos" eyebrow={data.started_at ? new Date(data.started_at).toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" }) : undefined} title={title} action={<ConfirmButton label="Borrar" confirmLabel="¿Borrar entrenamiento?" onConfirm={remove} />} />
+    <PageHead back="/entrenamientos" eyebrow={data.started_at ? new Date(data.started_at).toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" }) : undefined} title={title} action={<div className="line-actions"><button type="button" className="btn secondary" onClick={() => setSharing(true)}><Share2 size={15} /> Compartir</button><ConfirmButton iconOnly label="Borrar entrenamiento" confirmLabel="¿Borrar?" onConfirm={remove} /></div>} />
+    {sharing && <ShareWorkoutSheet workoutId={id} onClose={() => setSharing(false)} />}
     <div className="session-bar">
       <div><Dumbbell size={16} /><b>{data.exercises.length}</b><small>Ejercicios</small></div>
       <div><Activity size={16} /><b>{allSets.length}</b><small>Series</small></div>
@@ -738,10 +997,16 @@ function Profile() {
           {user.is_staff && <span className="chip down">Admin</span>}
         </div>
         {user.created_at && <div className="member-since"><CalendarDays size={14} /> Miembro desde {new Date(user.created_at).toLocaleDateString("es-AR", { month: "long", year: "numeric" })}</div>}
+        <div className="profile-links">
+          <Link to="/peso" className="row link-row"><span className="row-icon"><Scale size={17} /></span><span className="row-main">Peso y fotos de progreso</span><ChevronRight size={16} className="chev" /></Link>
+          <Link to="/entrenamientos" className="row link-row"><span className="row-icon"><CalendarDays size={17} /></span><span className="row-main">Historial de entrenamientos</span><ChevronRight size={16} className="chev" /></Link>
+          <Link to={`/usuario?id=${user.id}`} className="row link-row"><span className="row-icon"><Globe size={17} /></span><span className="row-main">Cómo te ven tus amigos</span><ChevronRight size={16} className="chev" /></Link>
+        </div>
         {user.is_staff && <Link to="/admin" className="btn secondary wide"><ShieldCheck size={17} /> Panel de administración</Link>}
         <button type="button" className="btn ghost-danger wide" onClick={logout}><LogOut size={17} /> Cerrar sesión</button>
       </section>
       <div className="stack">
+        <MyAchievements />
         <section className="panel form">
           <h3>Datos personales</h3>
           <label>Nombre<input value={name} onChange={(e) => setName(e.target.value)} placeholder="Tu nombre" autoComplete="name" /></label>
@@ -855,6 +1120,12 @@ function App() {
       <Route path="/entrenamiento" element={<WorkoutDetail />} />
       <Route path="/peso" element={<BodyWeight />} />
       <Route path="/perfil" element={<Profile />} />
+      <Route path="/amigos" element={<Friends />} />
+      <Route path="/usuario" element={<UserProfile />} />
+      <Route path="/mensajes" element={<Messages />} />
+      <Route path="/notificaciones" element={<Notifications />} />
+      <Route path="/comunidad" element={<Navigate replace to="/amigos" />} />
+      <Route path="/logros" element={<Navigate replace to="/perfil" />} />
       <Route path="/admin" element={<AdminUsers />} />
       <Route path="/admin/usuario" element={<AdminUserDetail />} />
       {/* URLs viejas en inglés: redirigen para no romper links guardados */}
