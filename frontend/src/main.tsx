@@ -811,7 +811,7 @@ function WorkoutRecorder() {
         <div className="section-head"><h3>Series de hoy</h3><span className="pill">{allSets.length}</span></div>
         {blocks.length ? <div className="stack tight">{blocks.map((b) => <div className="set-block" key={b.weId}>
           <button type="button" className="set-block-head" onClick={() => { setCurrent({ id: b.exerciseId, name: b.name }); setPicking(false); }}>{b.name}<small>{b.sets.length} {b.sets.length === 1 ? "serie" : "series"}</small></button>
-          {b.sets.map((s: any, i: number) => <div className="set-line" key={s.id}><span className="set-num">{i + 1}</span><span>{kg(s.weight_kg)} <small>kg</small></span><span>{s.reps} <small>reps</small></span><ConfirmButton iconOnly label="Borrar serie" confirmLabel="Borrar" onConfirm={() => void removeSet(b, s.id)} /></div>)}
+          {b.sets.map((s: any, i: number) => <EditableSet key={s.id} set={s} index={i} onSaved={(saved) => setBlocks((old) => old.map((x) => x.weId === b.weId ? { ...x, sets: x.sets.map((y: any) => y.id === saved.id ? { ...y, ...saved } : y) } : x))} onDelete={() => void removeSet(b, s.id)} />)}
         </div>)}</div> : <Empty icon={<Activity />} title="Sin series todavía">Elegí un ejercicio y cargá tu primera serie.</Empty>}
         <button className="btn secondary wide" onClick={finish}><Check size={17} /> Finalizar entrenamiento</button>
       </section>
@@ -930,9 +930,15 @@ function Workouts() {
 
 function EditableSet({ set, index, onSaved, onDelete }: { set: any; index: number; onSaved: (s: any) => void; onDelete: () => void }) {
   const [editing, setEditing] = useState(false); const [weight, setWeight] = useState(String(set.weight_kg)); const [reps, setReps] = useState(String(set.reps));
-  const save = () => void api(`/api/workout-sets/${set.id}/`, { method: "PATCH", body: JSON.stringify({ weight_kg: Number(weight), reps: Number(reps) }) }).then((s) => { onSaved(s); setEditing(false); });
-  if (editing) return <div className="set-line editing"><span className="set-num">{index + 1}</span><input inputMode="decimal" aria-label="Peso" value={weight} onChange={(e) => setWeight(e.target.value.replace(",", "."))} /><input inputMode="numeric" aria-label="Repeticiones" value={reps} onChange={(e) => setReps(e.target.value)} /><div className="line-actions"><IconButton label="Guardar" onClick={save}><Check size={15} /></IconButton><IconButton label="Cancelar" onClick={() => setEditing(false)}><X size={15} /></IconButton></div></div>;
-  return <div className="set-line"><span className="set-num">{index + 1}</span><span>{kg(set.weight_kg)} <small>kg</small></span><span>{set.reps} <small>reps</small></span><div className="line-actions"><IconButton label="Editar serie" onClick={() => setEditing(true)}><Pencil size={14} /></IconButton><ConfirmButton iconOnly label="Borrar serie" confirmLabel="Borrar" onConfirm={onDelete} /></div></div>;
+  const open = () => { setWeight(String(Number(set.weight_kg))); setReps(String(set.reps)); setEditing(true); };
+  const save = () => {
+    const w = Number(weight), r = Number(reps);
+    if (!(w >= 0) || !(r > 0) || !Number.isInteger(r)) return toast("Revisá el peso y las repes.", "⚠️");
+    void api(`/api/workout-sets/${set.id}/`, { method: "PATCH", body: JSON.stringify({ weight_kg: w, reps: r }) }).then((s) => { onSaved(s); setEditing(false); }).catch((e: Error) => toast(e.message, "⚠️"));
+  };
+  const keys = (e: React.KeyboardEvent) => { if (e.key === "Enter") save(); if (e.key === "Escape") setEditing(false); };
+  if (editing) return <div className="set-line editing"><span className="set-num">{index + 1}</span><input autoFocus inputMode="decimal" aria-label="Peso (kg)" value={weight} onChange={(e) => setWeight(e.target.value.replace(",", "."))} onKeyDown={keys} onFocus={(e) => e.target.select()} /><input inputMode="numeric" aria-label="Repeticiones" value={reps} onChange={(e) => setReps(e.target.value)} onKeyDown={keys} onFocus={(e) => e.target.select()} /><div className="line-actions"><IconButton label="Guardar" onClick={save}><Check size={15} /></IconButton><IconButton label="Cancelar" onClick={() => setEditing(false)}><X size={15} /></IconButton></div></div>;
+  return <div className="set-line tappable" onClick={(e) => { if (!(e.target as HTMLElement).closest("button")) open(); }}><span className="set-num">{index + 1}</span><span>{kg(set.weight_kg)} <small>kg</small></span><span>{set.reps} <small>reps</small></span><div className="line-actions"><IconButton label="Editar serie" onClick={open}><Pencil size={14} /></IconButton><ConfirmButton iconOnly label="Borrar serie" confirmLabel="Borrar" onConfirm={onDelete} /></div></div>;
 }
 function WorkoutDetail() {
   const id = useIdParam(); const navigate = useNavigate(); const [data, setData] = useState<any>(); const [sharing, setSharing] = useState(false); const [renaming, setRenaming] = useState(false); const [name, setName] = useState("");

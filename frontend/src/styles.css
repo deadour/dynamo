@@ -825,6 +825,9 @@ input[type="date"]::-webkit-datetime-edit { padding: 0; }
 .detail-actions { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: auto; }
 .detail-actions .btn { margin: 0; }
 
+.set-line.tappable { cursor: pointer; }
+.set-line.tappable:active { background: var(--surface-3); }
+
 /* ---------- mapa de calor ---------- */
 .heatmap-panel, .profile-grid > *, .stack > * { min-width: 0; }
 .heat-stats { display: flex; gap: 22px; margin: -4px 0 14px; color: var(--muted); font-size: 12.5px; }
