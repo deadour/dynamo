@@ -8,7 +8,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.routers import DefaultRouter
 from users.views import AuthViewSet, avatar_image
 from users.admin_views import AdminUserViewSet
-from exercises.views import ExerciseViewSet
+from exercises.views import ExerciseViewSet, exercise_photo
 from workouts.views import RoutineViewSet, WorkoutViewSet, WorkoutExerciseViewSet, WorkoutSetViewSet, shared_routine, import_shared_routine
 from bodymetrics.views import BodyWeightViewSet
 from progress.views import dashboard, exercise_progress
@@ -39,4 +39,4 @@ def readiness(request):
 def csrf(request):
     return JsonResponse({"status": "ok", "csrfToken": get_token(request)})
 
-urlpatterns = [path("health/", health), path("readiness/", readiness), path("csrf/", csrf), path("api/", include(router.urls)), path("api/avatars/<uuid:user_id>/", avatar_image, name="user-avatar"), path("api/shared-routines/<uuid:token>/", shared_routine, name="shared-routine"), path("api/shared-routines/<uuid:token>/import/", import_shared_routine, name="import-shared-routine"), path("api/dashboard/summary/", dashboard), path("api/progress/exercises/<uuid:exercise_id>/", exercise_progress), path("api/schema/", SpectacularAPIView.as_view()), path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"))]
+urlpatterns = [path("health/", health), path("readiness/", readiness), path("csrf/", csrf), path("api/", include(router.urls)), path("api/avatars/<uuid:user_id>/", avatar_image, name="user-avatar"), path("api/exercise-photos/<uuid:exercise_id>/", exercise_photo, name="exercise-photo"), path("api/shared-routines/<uuid:token>/", shared_routine, name="shared-routine"), path("api/shared-routines/<uuid:token>/import/", import_shared_routine, name="import-shared-routine"), path("api/dashboard/summary/", dashboard), path("api/progress/exercises/<uuid:exercise_id>/", exercise_progress), path("api/schema/", SpectacularAPIView.as_view()), path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"))]

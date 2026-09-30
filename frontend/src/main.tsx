@@ -23,7 +23,7 @@ export async function api(path: string, options: RequestInit = {}) {
   const response = await fetch(`${API}${path}`, { ...options, credentials: "include", headers: { ...(isJson ? { "Content-Type": "application/json" } : {}), ...(csrf ? { "X-CSRFToken": csrf } : {}), ...authHeaders(), ...(options.headers as Record<string, string> | undefined) } });
   // Sesión vencida o bloqueada: se vuelve al login en vez de dejar pantallas vacías.
   if ((response.status === 401 || response.status === 403) && !path.startsWith("/api/auth/") && !path.startsWith("/api/admin/")) { setToken(null); window.dispatchEvent(new Event("dynamo:unauthorized")); }
-  if (!response.ok) throw new Error((await response.json().catch(() => ({}))).detail || "No se pudo completar la operación");
+  if (!response.ok) { const body = await response.json().catch(() => ({})); const first = body && typeof body === "object" && !body.detail ? Object.values(body).flat()[0] : null; throw new Error(body.detail || (typeof first === "string" ? first : "") || "No se pudo completar la operación"); }
   const data = response.status === 204 ? null : await response.json();
   if (data && typeof data === "object" && typeof data.token === "string") setToken(data.token);
   return data;
@@ -236,22 +236,12 @@ function Dashboard() {
 }
 
 function Exercises() {
-  const [items, setItems] = useState<any[]>([]); const [loaded, setLoaded] = useState(false); const [query, setQuery] = useState(""); const [equipment, setEquipment] = useState(""); const [difficulty, setDifficulty] = useState(""); const [group, setGroup] = useState(""); const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ name: "", name_es: "", muscle: "", equipment: "", difficulty: "beginner", image: "", instructions: "" }); const [saving, setSaving] = useState(false); const [formError, setFormError] = useState("");
+  const [items, setItems] = useState<any[]>([]); const [loaded, setLoaded] = useState(false); const [query, setQuery] = useState(""); const [equipment, setEquipment] = useState(""); const [difficulty, setDifficulty] = useState(""); const [group, setGroup] = useState(""); const [creating, setCreating] = useState(false); const navigate = useNavigate();
   const load = () => { const params = new URLSearchParams({ search: query.trim() }); const muscles = GROUPS.find((g) => g.key === group)?.muscles; if (muscles) params.set("muscle", muscles.join(",")); if (equipment) params.set("equipment", equipment); if (difficulty) params.set("difficulty", difficulty); void api(`/api/exercises/?${params}`).then((d) => { setItems(d.results || d); setLoaded(true); }); };
   useEffect(load, []);
-  const updateForm = (key: string, value: string) => setForm((old) => ({ ...old, [key]: value }));
-  const saveCustom = () => {
-    if (!form.name.trim()) return setFormError("Poné un nombre para el ejercicio.");
-    setSaving(true); setFormError("");
-    const slug = form.name.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    const instructions = form.instructions.split("\n").map((line) => line.trim()).filter(Boolean);
-    const body = { name: form.name.trim(), name_es: (form.name_es || form.name).trim(), slug: slug || `ejercicio-${Date.now()}`, category: "strength", primary_muscles: form.muscle ? [form.muscle] : [], equipment: form.equipment, difficulty: form.difficulty, instructions, instructions_es: instructions, image_1: form.image.trim() };
-    void api("/api/exercises/", { method: "POST", body: JSON.stringify(body) }).then((item) => { setItems((old) => [item, ...old]); setForm({ name: "", name_es: "", muscle: "", equipment: "", difficulty: "beginner", image: "", instructions: "" }); setCreating(false); }).catch((e: Error) => setFormError(e.message)).finally(() => setSaving(false));
-  };
   return <>
-    <PageHead eyebrow="Catálogo" title="Ejercicios" action={<button className="btn primary" onClick={() => { setCreating((old) => !old); setFormError(""); }}><Plus size={17} /> {creating ? "Cerrar" : "Crear ejercicio"}</button>} />
-    {creating && <section className="panel custom-exercise-form"><div><small>Ejercicio personalizado</small><h3>Agregá uno que no está en el catálogo</h3><p className="hint">Solo vos vas a poder verlo y usarlo.</p></div><div className="grid two"><label>Nombre<input value={form.name} onChange={(e) => updateForm("name", e.target.value)} placeholder="Ej: Press unilateral en polea" /></label><label>Nombre corto<input value={form.name_es} onChange={(e) => updateForm("name_es", e.target.value)} placeholder="Se muestra en la app" /></label><label>Músculo principal<select value={form.muscle} onChange={(e) => updateForm("muscle", e.target.value)}><option value="">Elegí uno</option>{Object.entries(MUSCLES).map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select></label><label>Equipamiento<select value={form.equipment} onChange={(e) => updateForm("equipment", e.target.value)}><option value="">Sin equipamiento</option>{Object.entries(EQUIPMENT).map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select></label><label>Dificultad<select value={form.difficulty} onChange={(e) => updateForm("difficulty", e.target.value)}><option value="beginner">Principiante</option><option value="intermediate">Intermedio</option><option value="advanced">Avanzado</option></select></label><label>URL de foto<input type="url" value={form.image} onChange={(e) => updateForm("image", e.target.value)} placeholder="Opcional, por ahora" /></label></div><label>Instrucciones<textarea rows={4} value={form.instructions} onChange={(e) => updateForm("instructions", e.target.value)} placeholder="Una indicación por línea" /></label>{formError && <div className="error inline">{formError}</div>}<button className="btn primary" onClick={saveCustom} disabled={saving}><Save size={17} /> {saving ? "Guardando…" : "Guardar ejercicio"}</button></section>}
+    <PageHead eyebrow="Catálogo" title="Ejercicios" action={<button className="btn primary" onClick={() => setCreating(true)}><Plus size={18} /> Crear</button>} />
+    {creating && <CustomExerciseSheet initialName={query.trim()} onClose={() => setCreating(false)} onSaved={(ex) => navigate(`/ejercicio?id=${ex.id}`)} />}
     <div className="toolbar">
       <div className="search"><Search size={18} /><input aria-label="Buscar ejercicio" placeholder="Buscar por nombre…" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && load()} /></div>
       <div className="filters">
@@ -262,7 +252,7 @@ function Exercises() {
       </div>
     </div>
     <div className="exercise-grid">{items.map((item) => <Link className="exercise" to={`/ejercicio?id=${item.id}`} key={item.id}>
-      <div className="exercise-media">{item.image_1 ? <img src={item.image_1} alt="" loading="lazy" /> : <div className="image-placeholder"><Dumbbell /></div>}{item.difficulty && <span className={`badge lvl-${item.difficulty.toLowerCase()}`}>{LEVELS[item.difficulty.toLowerCase()] || item.difficulty}</span>}</div>
+      <div className="exercise-media">{item.image_1 ? <img src={item.image_1} alt="" loading="lazy" /> : <div className="image-placeholder"><Dumbbell /></div>}{item.is_custom && <span className="badge custom">Propio</span>}{!item.is_custom && item.difficulty && <span className={`badge lvl-${item.difficulty.toLowerCase()}`}>{LEVELS[item.difficulty.toLowerCase()] || item.difficulty}</span>}</div>
       <div className="exercise-body">
         <b>{item.name_es || item.name}</b>
         {item.name_es && item.name_es !== item.name && <small className="original-name">{item.name}</small>}
@@ -282,6 +272,54 @@ function useElapsed(since?: string) {
 }
 const ACTIVE_KEY = "dynamo.activeWorkout";
 const toBlocks = (workout: any) => (workout?.exercises || []).map((e: any) => ({ weId: e.id, exerciseId: e.exercise, name: e.exercise_name, sets: e.sets }));
+const MUSCLE_ORDER = ["chest", "lats", "middle back", "lower back", "traps", "shoulders", "biceps", "triceps", "forearms", "quadriceps", "hamstrings", "glutes", "calves", "adductors", "abductors", "abdominals", "neck"];
+// Formulario para crear o editar un ejercicio propio. Se abre como hoja desde abajo (cómodo en el celu).
+function CustomExerciseSheet({ initial, initialName = "", onSaved, onClose }: { initial?: any; initialName?: string; onSaved: (exercise: any) => void; onClose: () => void }) {
+  const [name, setName] = useState(initial?.name_es || initial?.name || initialName);
+  const [primary, setPrimary] = useState<string[]>(initial?.primary_muscles || []);
+  const [secondary, setSecondary] = useState<string[]>(initial?.secondary_muscles || []);
+  const [equipment, setEquipment] = useState(initial?.equipment || "");
+  const [category, setCategory] = useState(initial?.category || "strength");
+  const [steps, setSteps] = useState((initial?.instructions_es || []).join("\n"));
+  const [photo, setPhoto] = useState<File | null>(null); const [preview, setPreview] = useState<string>(initial?.image_1 || "");
+  const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const fileInput = useRef<HTMLInputElement>(null);
+  useEffect(() => { const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose(); window.addEventListener("keydown", esc); return () => window.removeEventListener("keydown", esc); }, []);
+  const toggle = (list: string[], set: (v: string[]) => void, m: string) => set(list.includes(m) ? list.filter((x) => x !== m) : [...list, m]);
+  const choosePhoto = (file?: File) => { if (!file) return; setPhoto(file); setPreview(URL.createObjectURL(file)); };
+  const save = async () => {
+    if (name.trim().length < 2) return setError("Poné un nombre para el ejercicio.");
+    if (!primary.length) return setError("Elegí al menos un músculo principal.");
+    setBusy(true); setError("");
+    try {
+      const body = JSON.stringify({ name: name.trim(), primary_muscles: primary, secondary_muscles: secondary.filter((m) => !primary.includes(m)), equipment, category, instructions_es: steps.split("\n").map((s: string) => s.trim()).filter(Boolean) });
+      let saved = await api(initial ? `/api/exercises/${initial.id}/` : "/api/exercises/", { method: initial ? "PATCH" : "POST", body });
+      if (photo) saved = await api(`/api/exercises/${saved.id}/photo/`, { method: "PUT", body: await compressImage(photo, 800) });
+      onSaved(saved);
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  };
+  return <div className="sheet-backdrop" onClick={onClose}>
+    <div className="sheet" role="dialog" aria-modal="true" aria-label={initial ? "Editar ejercicio" : "Crear ejercicio"} onClick={(e) => e.stopPropagation()}>
+      <div className="sheet-head"><h3>{initial ? "Editar ejercicio" : "Crear ejercicio"}</h3><IconButton label="Cerrar" onClick={onClose}><X size={16} /></IconButton></div>
+      <div className="sheet-body form">
+        <div className="photo-pick">
+          <button type="button" className="photo-drop" onClick={() => fileInput.current?.click()}>{preview ? <img src={preview} alt="" /> : <><Camera size={22} /><span>Foto (opcional)</span></>}</button>
+          <input ref={fileInput} type="file" accept="image/*" hidden onChange={(e) => choosePhoto(e.target.files?.[0])} />
+          <label className="grow">Nombre<input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Remo en máquina Hammer" autoFocus={!initial} /></label>
+        </div>
+        <div><small className="field-label">Músculos principales</small><div className="chip-wrap">{MUSCLE_ORDER.map((m) => <button type="button" key={m} className={`select-chip ${primary.includes(m) ? "on" : ""}`} onClick={() => toggle(primary, setPrimary, m)}>{muscleLabel(m)}</button>)}</div></div>
+        <details className="more" open={secondary.length > 0}><summary>Músculos secundarios (opcional)</summary><div className="chip-wrap">{MUSCLE_ORDER.filter((m) => !primary.includes(m)).map((m) => <button type="button" key={m} className={`select-chip soft ${secondary.includes(m) ? "on" : ""}`} onClick={() => toggle(secondary, setSecondary, m)}>{muscleLabel(m)}</button>)}</div></details>
+        <div className="grid two">
+          <label>Equipamiento<select value={equipment} onChange={(e) => setEquipment(e.target.value)}><option value="">Sin equipamiento</option>{Object.entries(EQUIPMENT).map(([value, n]) => <option key={value} value={value}>{n}</option>)}</select></label>
+          <label>Tipo<select value={category} onChange={(e) => setCategory(e.target.value)}>{Object.entries(CATEGORIES).map(([value, n]) => <option key={value} value={value}>{n}</option>)}</select></label>
+        </div>
+        <label>Cómo se hace (opcional)<textarea rows={3} value={steps} onChange={(e) => setSteps(e.target.value)} placeholder={"Un paso por renglón.\nEj: Sentate con la espalda apoyada."} /></label>
+        {error && <div className="error inline">{error}</div>}
+      </div>
+      <div className="sheet-foot"><button className="btn secondary" onClick={onClose}>Cancelar</button><button className="btn primary" onClick={() => void save()} disabled={busy}>{busy ? "Guardando…" : <><Check size={17} /> {initial ? "Guardar" : "Crear ejercicio"}</>}</button></div>
+    </div>
+  </div>;
+}
+
 function ExerciseThumb({ src, size = 44 }: { src?: string; size?: number }) {
   const [broken, setBroken] = useState(false);
   return src && !broken ? <img className="ex-thumb" src={src} alt="" loading="lazy" style={{ width: size, height: size }} onError={() => setBroken(true)} /> : <span className="ex-thumb empty" style={{ width: size, height: size }}><Dumbbell size={size * 0.4} /></span>;
@@ -295,6 +333,7 @@ function ExerciseOption({ item, onPick, action = <Plus size={16} /> }: { item: a
 }
 // Buscador de ejercicios con grupos musculares, habituales, recientes y resultados con foto.
 function ExercisePicker({ onPick, suggestions, excludeIds = [] }: { onPick: (item: any) => void; suggestions: any; excludeIds?: string[] }) {
+  const [creating, setCreating] = useState(false);
   const [group, setGroup] = useState(""); const [query, setQuery] = useState(""); const [options, setOptions] = useState<any[]>([]);
   const groupMuscles = GROUPS.find((g) => g.key === group)?.muscles; const groupLabel = GROUPS.find((g) => g.key === group)?.label.toLowerCase();
   useEffect(() => {
@@ -322,6 +361,9 @@ function ExercisePicker({ onPick, suggestions, excludeIds = [] }: { onPick: (ite
     {recent.length > 0 && <div><h3 className="block-title"><Timer size={15} /> Lo último que hiciste</h3><div className="chip-row">{recent.map((e: any) => <button type="button" key={e.id} className="pick-chip" onClick={() => pick(e)}><ExerciseThumb src={e.image_1} size={26} />{exerciseName(e)}</button>)}</div></div>}
     <div className="input-icon"><Search size={16} /><input aria-label="Buscar ejercicio" type="search" enterKeyHint="search" autoCapitalize="none" autoCorrect="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={group ? `Buscar en ${groupLabel}…` : "Buscar ejercicio"} /></div>
     {options.length > 0 && <div className="picker-results">{group && !query && <div className="picker-head"><Sparkles size={13} /> Sugeridos para {groupLabel}</div>}{options.map((item) => <ExerciseOption key={item.id} item={item} onPick={() => pick(item)} />)}</div>}
+    {query.trim().length >= 2 && options.length === 0 && <p className="hint">No encontramos "{query.trim()}".</p>}
+    <button type="button" className="create-exercise" onClick={() => setCreating(true)}><Plus size={16} /><span>{query.trim().length >= 2 ? <>Crear "<b>{query.trim()}</b>" como ejercicio propio</> : "¿No está? Creá tu propio ejercicio"}</span></button>
+    {creating && <CustomExerciseSheet initialName={query.trim()} onClose={() => setCreating(false)} onSaved={(ex) => { setCreating(false); pick(ex); }} />}
   </div>;
 }
 function useSuggestions() {
@@ -442,7 +484,7 @@ function Routines() {
   useEffect(() => { void api("/api/routines/").then((d) => { setRows(d.results || d); setLoaded(true); }); }, []);
   const share = async (routine: any) => {
     setShareBusy(true); setCopied(false); setShareError("");
-    try { const data = await api(`/api/routines/${routine.id}/share/`, { method: "POST" }); setShareUrl(`${window.location.origin}/rutina-compartida/${data.token}`); setShareName(routine.name); }
+    try { const data = await api(`/api/routines/${routine.id}/share/`, { method: "POST" }); setShareUrl(`${window.location.origin}/rutina-compartida?token=${data.token}`); setShareName(routine.name); }
     catch (e) { setShareError(e instanceof Error ? e.message : "No se pudo generar el enlace."); }
     finally { setShareBusy(false); }
   };
@@ -614,15 +656,17 @@ function ExerciseImages({ images, name }: { images: string[]; name: string }) {
   return <div className="exercise-hero">{images.map((src, i) => <img key={src} src={src} alt={i === 0 ? name : ""} className={i === frame ? "on" : ""} />)}{images.length > 1 && <span className="hero-hint"><Activity size={13} /> Inicio y final del movimiento</span>}</div>;
 }
 function Progress() {
-  const id = useIdParam(); const navigate = useNavigate(); const [data, setData] = useState<any>(); const [info, setInfo] = useState<any>(); const [showEnglish, setShowEnglish] = useState(false);
-  useEffect(() => { void api(`/api/progress/exercises/${id}/`).then(setData); void api(`/api/exercises/${id}/`).then(setInfo).catch(() => undefined); }, [id]);
+  const id = useIdParam(); const navigate = useNavigate(); const me = useContext(UserContext); const [data, setData] = useState<any>(); const [info, setInfo] = useState<any>(); const [showEnglish, setShowEnglish] = useState(false); const [editing, setEditing] = useState(false);
+  const load = () => { void api(`/api/progress/exercises/${id}/`).then(setData); void api(`/api/exercises/${id}/`).then(setInfo).catch(() => undefined); };
+  useEffect(load, [id]);
   if (!data) return <Loading label="Cargando ejercicio…" />;
   const name = data.exercise.name; const images = [info?.image_1 || data.exercise.image_1, info?.image_2].filter(Boolean);
   const facts = info ? [label(CATEGORIES, info.category), info.equipment ? equipmentLabel(info.equipment) : "", label(LEVELS, info.difficulty), label(FORCES, info.force), label(MECHANICS, info.mechanic)].filter(Boolean) : [];
   const steps: string[] = info?.instructions_es?.length ? info.instructions_es : info?.instructions || [];
   const inEnglish = !!info && !info.instructions_es?.length && steps.length > 0;
   return <>
-    <PageHead back="/ejercicios" eyebrow="Ejercicio" title={name} />
+    <PageHead back="/ejercicios" eyebrow={info?.is_custom ? "Ejercicio propio" : "Ejercicio"} title={name} action={info?.is_custom && info.created_by === me?.id ? <div className="line-actions"><IconButton label="Editar ejercicio" onClick={() => setEditing(true)}><Pencil size={15} /></IconButton><ConfirmButton iconOnly label="Borrar ejercicio" confirmLabel="¿Borrar?" onConfirm={() => void api(`/api/exercises/${id}/`, { method: "DELETE" }).then(() => navigate("/ejercicios"))} /></div> : undefined} />
+    {editing && <CustomExerciseSheet initial={info} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); load(); }} />}
     {data.exercise.name_original && data.exercise.name_original !== name && <p className="original-title">{data.exercise.name_original}</p>}
     <div className="exercise-detail">
       <ExerciseImages images={images} name={name} />
@@ -786,17 +830,18 @@ function AdminUserDetail() {
 }
 
 function SharedRoutine() {
-  const { token = "" } = useParams(); const navigate = useNavigate(); const [routine, setRoutine] = useState<any>(); const [user, setUser] = useState<any>(); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
-  useEffect(() => { void api(`/api/shared-routines/${token}/`).then(setRoutine).catch((e: Error) => setError(e.message)); void api("/api/auth/me/").then(setUser).catch(() => setUser(null)); }, [token]);
+  const params = useParams(); const token = useSearchParams()[0].get("token") || params.token || ""; const navigate = useNavigate(); const [routine, setRoutine] = useState<any>(); const [user, setUser] = useState<any>(); const [busy, setBusy] = useState(false); const [notFound, setNotFound] = useState(false); const [error, setError] = useState("");
+  useEffect(() => { void api(`/api/shared-routines/${token}/`).then(setRoutine).catch(() => setNotFound(true)); void api("/api/auth/me/").then(setUser).catch(() => setUser(null)); }, [token]);
   const importRoutine = () => { setBusy(true); setError(""); void api(`/api/shared-routines/${token}/import/`, { method: "POST" }).then(() => navigate("/rutinas")).catch((e: Error) => setError(e.message)).finally(() => setBusy(false)); };
-  if (error) return <div className="shared-routine-page"><section className="panel shared-card"><h1>No encontramos esa rutina</h1><p className="hint">El enlace puede estar vencido o ser incorrecto.</p><Link className="btn primary" to="/inicio">Ir a Dynamo</Link></section></div>;
+  if (notFound || !token) return <div className="shared-routine-page"><section className="panel shared-card"><h1>No encontramos esa rutina</h1><p className="hint">El enlace puede estar vencido o ser incorrecto.</p><Link className="btn primary" to="/inicio">Ir a Dynamo</Link></section></div>;
   if (!routine) return <Loading label="Cargando rutina…" />;
-  return <div className="shared-routine-page"><section className="panel shared-card"><small>Rutina compartida</small><h1>{routine.name}</h1><p className="hint">Creada por {routine.owner_name}. Podés verla y guardarla en tu cuenta para empezar a entrenar.</p><div className="routine-items">{routine.items.map((it: any) => <div className="routine-item" key={it.id}><ExerciseThumb src={it.image} size={42} /><div className="routine-item-main"><b>{it.exercise_name}</b><small>{it.target_sets || "—"} series · {it.target_reps || "Repeticiones libres"}</small></div></div>)}</div>{error && <div className="error inline">{error}</div>}{user ? <button className="btn primary wide lg" onClick={importRoutine} disabled={busy}>{busy ? "Guardando…" : "Guardar en mis rutinas"}</button> : <Link className="btn primary wide lg" to={`/ingresar?next=${encodeURIComponent(`/rutina-compartida/${token}`)}`}>Ingresar para usar esta rutina</Link>}<Link className="shared-back" to="/inicio">Dynamo</Link></section></div>;
+  return <div className="shared-routine-page"><section className="panel shared-card"><small>Rutina compartida</small><h1>{routine.name}</h1><p className="hint">Creada por {routine.owner_name}. Podés verla y guardarla en tu cuenta para empezar a entrenar.</p><div className="routine-items">{routine.items.map((it: any) => <div className="routine-item" key={it.id}><ExerciseThumb src={it.image} size={42} /><div className="routine-item-main"><b>{it.exercise_name}</b><small>{it.target_sets || "—"} series · {it.target_reps || "Repeticiones libres"}</small></div></div>)}</div>{error && <div className="error inline">{error}</div>}{user ? <button className="btn primary wide lg" onClick={importRoutine} disabled={busy}>{busy ? "Guardando…" : "Guardar en mis rutinas"}</button> : <Link className="btn primary wide lg" to={`/ingresar?next=${encodeURIComponent(`/rutina-compartida?token=${token}`)}`}>Ingresar para usar esta rutina</Link>}<Link className="shared-back" to="/inicio">Dynamo</Link></section></div>;
 }
 function LegacyRedirect({ to }: { to: string }) { const { id } = useParams(); return <Navigate replace to={id ? `${to}?id=${id}` : to} />; }
 function App() {
   return <Routes>
     <Route path="/ingresar" element={<Login />} />
+    <Route path="/rutina-compartida" element={<SharedRoutine />} />
     <Route path="/rutina-compartida/:token" element={<SharedRoutine />} />
     <Route path="/login" element={<Navigate replace to="/ingresar" />} />
     <Route path="*" element={<ProtectedRoute><Layout><Routes>

@@ -71,3 +71,21 @@ def test_routine_can_be_shared_publicly_and_imported(setup):
     assert imported.status_code == 201
     assert imported.json()["name"] == "Copia de Full body"
     assert len(imported.json()["items"]) == 2
+
+
+@pytest.mark.django_db
+def test_importing_shared_routine_copies_foreign_custom_exercises(setup):
+    owner, client, bench, _ = setup
+    custom = client.post("/api/exercises/", {"name": "Remo Hammer", "primary_muscles": ["lats"]}, format="json").json()
+    routine = client.post("/api/routines/", {"name": "Espalda", "items": [{"exercise": str(bench.id)}, {"exercise": custom["id"]}]}, format="json").json()
+    token = client.post(f"/api/routines/{routine['id']}/share/").json()["token"]
+
+    friend = User.objects.create_user("amigo@example.com")
+    friend_client = APIClient()
+    friend_client.force_authenticate(user=friend)
+    imported = friend_client.post(f"/api/shared-routines/{token}/import/").json()
+
+    exercise_ids = [i["exercise"] for i in imported["items"]]
+    assert exercise_ids[0] == str(bench.id)
+    assert exercise_ids[1] != custom["id"]
+    assert friend_client.get(f"/api/exercises/{exercise_ids[1]}/").json()["name"] == "Remo Hammer"

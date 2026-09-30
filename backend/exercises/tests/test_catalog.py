@@ -78,3 +78,55 @@ def test_user_can_create_a_private_custom_exercise():
     other_client = APIClient()
     other_client.force_authenticate(user=other)
     assert other_client.get(f"/api/exercises/{exercise.id}/").status_code == 404
+
+
+@pytest.mark.django_db
+def test_user_creates_edits_and_deletes_private_custom_exercise():
+    owner = User.objects.create_user("custom@example.com")
+    other = User.objects.create_user("other-custom@example.com")
+    client = APIClient()
+    client.force_authenticate(user=owner)
+
+    created = client.post("/api/exercises/", {"name": "  Remo  en  máquina Hammer ", "primary_muscles": ["lats"], "equipment": "machine", "category": "strength", "instructions_es": ["Sentate.", " "]}, format="json")
+    assert created.status_code == 201
+    data = created.json()
+    assert (data["name"], data["name_es"], data["is_custom"]) == ("Remo en máquina Hammer", "Remo en máquina Hammer", True)
+    assert data["instructions_es"] == ["Sentate."] and "photo" not in data
+
+    assert client.post("/api/exercises/", {"name": "X", "primary_muscles": ["lats"]}, format="json").status_code == 400
+    assert client.post("/api/exercises/", {"name": "Sin músculo", "primary_muscles": []}, format="json").status_code == 400
+    assert client.post("/api/exercises/", {"name": "Raro", "primary_muscles": ["alas"]}, format="json").status_code == 400
+    assert client.patch(f"/api/exercises/{data['id']}/", {"name": "Remo Hammer"}, format="json").json()["name_es"] == "Remo Hammer"
+
+    intruder = APIClient()
+    intruder.force_authenticate(user=other)
+    assert intruder.get(f"/api/exercises/{data['id']}/").status_code == 404
+    assert client.delete(f"/api/exercises/{data['id']}/").status_code == 204
+    assert not Exercise.objects.filter(id=data["id"]).exists()
+
+
+@pytest.mark.django_db
+def test_catalog_is_read_only_and_used_custom_exercises_are_archived():
+    user = User.objects.create_user("archive@example.com")
+    catalog = Exercise.objects.create(name="Bench", slug="bench")
+    client = APIClient()
+    client.force_authenticate(user=user)
+    assert client.patch(f"/api/exercises/{catalog.id}/", {"name": "Hack"}, format="json").status_code == 403
+    assert client.delete(f"/api/exercises/{catalog.id}/").status_code == 403
+
+    mine = client.post("/api/exercises/", {"name": "Mío", "primary_muscles": ["chest"]}, format="json").json()
+    WorkoutExercise.objects.create(workout=Workout.objects.create(user=user, started_at="2026-01-01T10:00:00Z"), exercise_id=mine["id"])
+    assert client.delete(f"/api/exercises/{mine['id']}/").status_code == 204
+    assert Exercise.objects.get(id=mine["id"]).active is False
+
+
+@pytest.mark.django_db
+def test_custom_exercise_photo_upload_and_public_serving():
+    user = User.objects.create_user("photo-ex@example.com")
+    client = APIClient()
+    client.force_authenticate(user=user)
+    mine = client.post("/api/exercises/", {"name": "Con foto", "primary_muscles": ["chest"]}, format="json").json()
+    data = client.put(f"/api/exercises/{mine['id']}/photo/", b"\xff\xd8\xff" + b"0" * 40, content_type="image/jpeg").json()
+    assert f"/api/exercise-photos/{mine['id']}/" in data["image_1"]
+    assert APIClient().get(f"/api/exercise-photos/{mine['id']}/")["Content-Type"] == "image/jpeg"
+    assert client.put(f"/api/exercises/{mine['id']}/photo/", b"nope", content_type="image/jpeg").status_code == 400

@@ -7,6 +7,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from exercises.models import Exercise
 from .models import Routine, RoutineExercise, Workout, WorkoutExercise, WorkoutSet
 from .serializers import RoutineSerializer, SharedRoutineSerializer, WorkoutSerializer, WorkoutExerciseSerializer, SetSerializer
 class WorkoutViewSet(viewsets.ModelViewSet):
@@ -85,6 +86,21 @@ def shared_routine(request, token):
     return Response(SharedRoutineSerializer(routine).data)
 
 
+def _usable_exercise(exercise, user):
+    """Los ejercicios propios son privados: si la rutina trae uno ajeno, se copia para quien importa."""
+    if not exercise.is_custom or exercise.created_by_id == user.id:
+        return exercise
+    copy = Exercise.objects.filter(is_custom=True, created_by=user, name=exercise.name).first()
+    if copy is None:
+        copy = Exercise.objects.create(
+            name=exercise.name, name_es=exercise.name_es, slug=exercise.slug, category=exercise.category,
+            primary_muscles=exercise.primary_muscles, secondary_muscles=exercise.secondary_muscles,
+            equipment=exercise.equipment, difficulty=exercise.difficulty, instructions_es=exercise.instructions_es,
+            image_1=exercise.image_1, is_custom=True, created_by=user, source="custom",
+        )
+    return copy
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def import_shared_routine(request, token):
@@ -101,7 +117,7 @@ def import_shared_routine(request, token):
         RoutineExercise.objects.bulk_create([
             RoutineExercise(
                 routine=routine,
-                exercise=item.exercise,
+                exercise=_usable_exercise(item.exercise, request.user),
                 order=item.order,
                 target_sets=item.target_sets,
                 target_reps=item.target_reps,
