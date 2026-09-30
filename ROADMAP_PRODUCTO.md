@@ -36,8 +36,8 @@ La aplicación ya cuenta con:
 
 ### Registro de entrenamiento
 
-- [ ] Buscar ejercicios por nombre mientras se escribe.
-- [ ] Seleccionar ejercicio visualmente, sin pegar UUIDs.
+- [x] Buscar ejercicios por nombre mientras se escribe.
+- [x] Seleccionar ejercicio visualmente, sin pegar UUIDs.
 - [ ] Mostrar imagen y músculos involucrados.
 - [ ] Mostrar última sesión del mismo ejercicio.
 - [ ] Copiar la serie anterior.
@@ -84,7 +84,7 @@ Mejoras pendientes:
 - [ ] Mejor peso por sesión.
 - [ ] 1RM estimado por sesión.
 - [ ] Volumen por sesión.
-- [ ] Peso corporal en el tiempo.
+- [x] Peso corporal en el tiempo.
 - [ ] Volumen semanal y mensual.
 - [ ] Selector de rango: 30 días, 90 días, 6 meses, 1 año y todo.
 - [ ] Tooltips claros en mobile.

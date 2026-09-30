@@ -15,5 +15,9 @@ class ExerciseViewSet(viewsets.ModelViewSet):
             q = q.filter(Q(name__icontains=term) | Q(name_es__icontains=term))
         if params.get("category"): q = q.filter(category__iexact=params["category"])
         if params.get("equipment"): q = q.filter(equipment__iexact=params["equipment"])
+        if params.get("difficulty"): q = q.filter(difficulty__iexact=params["difficulty"])
+        if params.get("muscle"):
+            muscle = params["muscle"]
+            q = q.filter(Q(primary_muscles__icontains=muscle) | Q(secondary_muscles__icontains=muscle))
         return q.order_by("name").distinct()
     def perform_create(self, serializer): serializer.save(created_by=self.request.user, is_custom=True, source="custom")
