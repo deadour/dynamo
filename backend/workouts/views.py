@@ -35,3 +35,16 @@ class WorkoutExerciseViewSet(viewsets.ModelViewSet):
     @action(detail=True,methods=["post"],url_path="sets")
     def add_set(self,request,pk=None):
         obj=self.get_object(); data={**request.data,"workout_exercise":obj.id}; ser=SetSerializer(data=data); ser.is_valid(raise_exception=True); ser.save(); return Response(ser.data,status=201)
+
+
+class WorkoutSetViewSet(viewsets.ModelViewSet):
+    serializer_class = SetSerializer
+    http_method_names = ["get", "patch", "delete", "head", "options"]
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False) or not self.request.user.is_authenticated:
+            return WorkoutSet.objects.none()
+        return WorkoutSet.objects.filter(workout_exercise__workout__user=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(workout_exercise=self.get_object().workout_exercise)

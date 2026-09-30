@@ -1,13 +1,14 @@
 from django.urls import path, include
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET
+from django.db import connection
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.middleware.csrf import get_token
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.routers import DefaultRouter
 from users.views import AuthViewSet
 from exercises.views import ExerciseViewSet
-from workouts.views import WorkoutViewSet, WorkoutExerciseViewSet
+from workouts.views import WorkoutViewSet, WorkoutExerciseViewSet, WorkoutSetViewSet
 from bodymetrics.views import BodyWeightViewSet
 from progress.views import dashboard, exercise_progress
 
@@ -16,14 +17,23 @@ router.register("auth", AuthViewSet, basename="auth")
 router.register("exercises", ExerciseViewSet, basename="exercise")
 router.register("workouts", WorkoutViewSet, basename="workout")
 router.register("workout-exercises", WorkoutExerciseViewSet, basename="workout-exercise")
+router.register("workout-sets", WorkoutSetViewSet, basename="workout-set")
 router.register("body-weight", BodyWeightViewSet, basename="body-weight")
 @require_GET
 def health(request):
     return JsonResponse({"status": "ok"})
+
+@require_GET
+def readiness(request):
+    try:
+        connection.ensure_connection()
+    except Exception:
+        return JsonResponse({"status": "error"}, status=503)
+    return JsonResponse({"status": "ok", "database": "ok"})
 
 @ensure_csrf_cookie
 @require_GET
 def csrf(request):
     return JsonResponse({"status": "ok", "csrfToken": get_token(request)})
 
-urlpatterns = [path("health/", health), path("csrf/", csrf), path("api/", include(router.urls)), path("api/dashboard/summary/", dashboard), path("api/progress/exercises/<uuid:exercise_id>/", exercise_progress), path("api/schema/", SpectacularAPIView.as_view()), path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"))]
+urlpatterns = [path("health/", health), path("readiness/", readiness), path("csrf/", csrf), path("api/", include(router.urls)), path("api/dashboard/summary/", dashboard), path("api/progress/exercises/<uuid:exercise_id>/", exercise_progress), path("api/schema/", SpectacularAPIView.as_view()), path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"))]
