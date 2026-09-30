@@ -93,7 +93,7 @@ class DirectMessage(models.Model):
 
 
 class Notification(models.Model):
-    KINDS = [("achievement", "Logro"), ("follow", "Seguidor"), ("message", "Mensaje"), ("comment", "Comentario"), ("like", "Me gusta")]
+    KINDS = [("achievement", "Logro"), ("follow", "Seguidor"), ("message", "Mensaje"), ("comment", "Comentario"), ("like", "Me gusta"), ("routine", "Rutina")]
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications")
     kind = models.CharField(max_length=20, choices=KINDS)
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.CASCADE, related_name="+")

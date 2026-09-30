@@ -164,3 +164,24 @@ def test_people_search_ignores_accents_and_case(people):
     User.objects.create_user("tomas.g@example.com", name="Tomás Guzmán")
     names = {p["name"] for p in client_for(people["edu"]).get("/api/profiles/?search=TOMAS guz").json()}
     assert names == {"Tomás Guzmán"}
+
+
+@pytest.mark.django_db
+def test_friends_see_and_save_each_others_routines(people):
+    from workouts.models import Routine, RoutineExercise
+    edu, tobi, stranger = people["edu"], people["tobi"], people["extraño"]
+    squat = Exercise.objects.create(name="Squat", name_es="Sentadilla", slug="squat")
+    routine = Routine.objects.create(user=tobi, name="Piernas de Tobi")
+    RoutineExercise.objects.create(routine=routine, exercise=squat, order=0, target_sets=4, target_reps="8")
+    Routine.objects.create(user=tobi, name="Vacía")  # sin ejercicios: no se muestra
+
+    assert "routines" not in client_for(stranger).get(f"/api/profiles/{tobi.id}/").json()
+    assert client_for(stranger).post(f"/api/profiles/{tobi.id}/routines/{routine.id}/save/").status_code == 403
+
+    befriend(edu, tobi)
+    profile = client_for(edu).get(f"/api/profiles/{tobi.id}/").json()
+    assert [(r["name"], r["exercises"]) for r in profile["routines"]] == [("Piernas de Tobi", ["Sentadilla"])]
+    saved = client_for(edu).post(f"/api/profiles/{tobi.id}/routines/{routine.id}/save/").json()
+    assert saved["name"] == "Piernas de Tobi" and saved["items"][0]["target_sets"] == 4
+    assert Routine.objects.filter(user=edu, name="Piernas de Tobi").exists()
+    assert any(n["kind"] == "routine" for n in client_for(tobi).get("/api/notifications/").json())

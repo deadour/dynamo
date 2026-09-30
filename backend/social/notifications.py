@@ -51,3 +51,7 @@ def notify_like(liker, post):
         existing.save(update_fields=["text", "actor", "created_at"])
         return existing
     return notify(post.user, "like", text, actor=liker, link=link)
+
+
+def notify_routine_saved(saver, routine):
+    return notify(routine.user, "routine", f"{_name(saver)} guardó tu rutina «{routine.name}»", actor=saver, link=f"/usuario?id={saver.id}")

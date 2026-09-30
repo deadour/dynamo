@@ -17,11 +17,12 @@ from bodymetrics.views import ImageParser, detect_image_type
 from media_utils import delete_image, upload_image
 from search_utils import normalize
 from users.models import User
-from workouts.models import Workout
+from workouts.models import Routine, Workout
+from workouts.serializers import RoutineSerializer
 
 from .achievements import ensure_definitions
 from .models import Achievement, Comment, DirectMessage, Follow, Notification, Post, PostLike, UserAchievement
-from .notifications import notify_comment, notify_follow, notify_like, notify_message
+from .notifications import notify_comment, notify_follow, notify_like, notify_message, notify_routine_saved
 from .serializers import AchievementSerializer, CommentSerializer, DirectMessageSerializer, PostSerializer, display_name, workout_summary
 
 MAX_POST_PHOTO_BYTES = 3_000_000
@@ -187,7 +188,25 @@ class ProfileViewSet(viewsets.ReadOnlyModelViewSet):
         if row["is_friend"] or row["is_me"]:
             workouts = Workout.objects.filter(user=person).prefetch_related("exercises__sets", "exercises__exercise")[:5]
             row["recent_workouts"] = [workout_summary(w) for w in workouts]
+            routines = Routine.objects.filter(user=person).prefetch_related("items__exercise")
+            row["routines"] = [{
+                "id": str(r.id), "name": r.name, "exercise_count": len(r.items.all()),
+                "exercises": [i.exercise.name_es or i.exercise.name for i in list(r.items.all())[:4]],
+                "images": [i.exercise.image_1 for i in r.items.all() if i.exercise.image_1][:3],
+            } for r in routines if r.items.all()]
         return Response(row)
+
+    @action(detail=True, methods=["post"], url_path=r"routines/(?P<routine_id>[^/.]+)/save")
+    def save_routine(self, request, id=None, routine_id=None):
+        """Guardar en mi cuenta una rutina de un amigo."""
+        person = self.get_object()
+        if person.id not in friend_ids(request.user):
+            raise PermissionDenied("Solo podés guardar rutinas de tus amigos.")
+        from workouts.views import copy_routine
+        source = get_object_or_404(Routine.objects.prefetch_related("items__exercise"), pk=routine_id, user=person)
+        routine = copy_routine(source, request.user, source.name)
+        notify_routine_saved(request.user, source)
+        return Response(RoutineSerializer(routine, context={"request": request}).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post", "delete"])
     def follow(self, request, id=None):

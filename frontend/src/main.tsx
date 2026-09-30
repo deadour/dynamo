@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Activity, ArrowLeft, Bell, Camera, CalendarDays, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Dumbbell, Flame, Globe, Heart, History, Home, ImagePlus, ListChecks, ListPlus, LogOut, MessageCircle, Pencil, Plus, Save, Scale, Search, Send, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Timer, Trash2, TrendingDown, TrendingUp, Trophy, UserRound, Users, X } from "lucide-react";
+import { Activity, ArrowLeft, Bell, Camera, Lock, CalendarDays, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Dumbbell, Flame, Globe, Heart, History, Home, ImagePlus, ListChecks, ListPlus, LogOut, MessageCircle, Pencil, Plus, Save, Scale, Search, Send, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Timer, Trash2, TrendingDown, TrendingUp, Trophy, UserRound, Users, X } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import "./styles.css";
 
@@ -220,7 +220,7 @@ function useUnreadNotifications() {
   useEffect(() => { const t = setInterval(refresh, 60000); window.addEventListener("dynamo:notifications-read", refresh); return () => { clearInterval(t); window.removeEventListener("dynamo:notifications-read", refresh); }; }, []);
   return count;
 }
-const NOTIF_ICONS: Record<string, React.ReactNode> = { follow: <UserRound size={16} />, message: <MessageCircle size={16} />, comment: <MessageCircle size={16} />, like: <Heart size={16} />, achievement: <Trophy size={16} /> };
+const NOTIF_ICONS: Record<string, React.ReactNode> = { follow: <UserRound size={16} />, message: <MessageCircle size={16} />, comment: <MessageCircle size={16} />, like: <Heart size={16} />, achievement: <Trophy size={16} />, routine: <ListChecks size={16} /> };
 function Notifications() {
   const [rows, setRows] = useState<any[] | null>(null); const navigate = useNavigate();
   useEffect(() => { void api("/api/notifications/").then((d) => { setRows(d); if (d.some((n: any) => !n.read)) void api("/api/notifications/read-all/", { method: "POST" }).then(() => window.dispatchEvent(new Event("dynamo:notifications-read"))); }); }, []);
@@ -398,6 +398,19 @@ function Friends() {
     {tab === "actividad" ? <FeedTab onFindPeople={() => setParams({ tab: "personas" })} /> : <PeopleTab />}
   </>;
 }
+function FriendRoutines({ person }: { person: any }) {
+  const [saved, setSaved] = useState<Record<string, boolean>>({}); const [busy, setBusy] = useState("");
+  const save = (r: any) => { setBusy(r.id); void api(`/api/profiles/${person.id}/routines/${r.id}/save/`, { method: "POST" }).then(() => { setSaved((o) => ({ ...o, [r.id]: true })); toast(`«${r.name}» quedó en tus rutinas`, "✅"); }).catch((e: Error) => toast(e.message, "⚠️")).finally(() => setBusy("")); };
+  return <section className="panel">
+    <div className="section-head"><h3>{person.is_me ? "Tus rutinas" : `Rutinas de ${firstNameOf(person.name)}`}</h3><span className="pill">{person.routines.length}</span></div>
+    {person.is_me && <p className="hint">Tus amigos las ven acá y pueden guardarse una copia.</p>}
+    <div className="list">{person.routines.map((r: any) => <div className="row friend-routine" key={r.id}>
+      <span className="thumb-stack">{r.images.slice(0, 2).map((src: string) => <ExerciseThumb key={src} src={src} size={34} />)}{!r.images.length && <span className="rp-icon"><ListChecks size={16} /></span>}</span>
+      <span className="row-main">{r.name}<small className="no-cap">{r.exercises.join(" · ")}{r.exercise_count > r.exercises.length ? ` y ${r.exercise_count - r.exercises.length} más` : ""}</small></span>
+      {!person.is_me && <button type="button" className={`btn ${saved[r.id] ? "secondary" : "primary"} follow-btn`} disabled={busy === r.id || saved[r.id]} onClick={() => save(r)}>{saved[r.id] ? <><Check size={14} /> Guardada</> : <><ListPlus size={14} /> Guardar</>}</button>}
+    </div>)}</div>
+  </section>;
+}
 function UserProfile() {
   const id = useIdParam(); const [p, setP] = useState<any>(); const [posts, setPosts] = useState<any[]>([]); const [missing, setMissing] = useState(false);
   const load = () => { void api(`/api/profiles/${id}/`).then(setP).catch(() => setMissing(true)); void api(`/api/posts/?user=${id}`).then((d) => setPosts(d.results || d)).catch(() => undefined); };
@@ -425,6 +438,7 @@ function UserProfile() {
         <div className={`vs-bar them ${theirs > mine ? "lead" : ""}`}><i style={{ width: `${(theirs / max) * 100}%` }} /><span>{them}</span><b>{kg(theirs)}{unit && ` ${unit}`}</b></div>
       </div>; })}</div>
     </section>}
+    {p.routines?.length > 0 && <FriendRoutines person={p} />}
     {p.achievements.length > 0 && <section className="panel"><div className="section-head"><h3>Logros</h3><span className="pill">{p.achievements.length}</span></div><div className="badge-row">{p.achievements.map((a: any) => <span className="ach-badge" key={a.title} title={`${a.title}: ${a.description}`}><span>{a.icon}</span><small>{a.title}</small></span>)}</div></section>}
     {p.recent_workouts ? p.recent_workouts.length > 0 && <section className="panel"><div className="section-head"><h3>Últimos entrenamientos</h3></div><div className="stack tight">{p.recent_workouts.map((w: any, i: number) => <div key={i}><small className="field-label">{timeAgo(w.date)}</small><WorkoutCard w={w} /></div>)}</div></section>
       : !p.is_me && <section className="panel"><p className="hint lock-hint"><Users size={15} /> Cuando se sigan entre los dos, vas a ver sus entrenamientos.</p></section>}
@@ -909,9 +923,9 @@ function BodyWeight() {
         {error && <div className="error inline">{error}</div>}
       </section>
     </div>
-    {withPhotos.length > 0 && <section className="panel chart-panel"><div className="section-head"><h3>Fotos de progreso</h3><span className="pill">{withPhotos.length}</span></div><div className="photo-strip">{withPhotos.map((r) => <button type="button" key={r.id} className="photo-card" onClick={() => setViewer(r)}><Photo id={r.id} version={versions[r.id] || 0} className="photo-img" /><span><b>{kg(r.weight_kg)} kg</b><small>{shortDate(r.date)}</small></span></button>)}</div></section>}
+    {withPhotos.length > 0 && <section className="panel chart-panel"><div className="section-head"><h3>Fotos de progreso</h3><span className="pill private"><Lock size={11} /> Solo vos</span></div><div className="photo-strip">{withPhotos.map((r) => <button type="button" key={r.id} className="photo-card" onClick={() => setViewer(r)}><Photo id={r.id} version={versions[r.id] || 0} className="photo-img" /><span><b>{kg(r.weight_kg)} kg</b><small>{shortDate(r.date)}</small></span></button>)}</div></section>}
     {rows.length > 1 && <section className="panel chart-panel"><div className="section-head"><h3>Evolución</h3></div><ResponsiveContainer width="100%" height={240}><AreaChart data={rows} margin={{ top: 10, right: 6, bottom: 0, left: -18 }}><Gradient id="weight" color="#b6f36a" /><CartesianGrid stroke="#1c2430" vertical={false} /><XAxis dataKey="date" {...AXIS} tickFormatter={shortDate} minTickGap={24} /><YAxis {...AXIS} domain={[(min: number) => Math.floor(min - 1), (max: number) => Math.ceil(max + 1)]} allowDecimals={false} tickFormatter={(v) => nf.format(v)} /><Tooltip content={<ChartTip />} cursor={{ stroke: "#2b3646" }} /><Area type="monotone" dataKey="weight_kg" name="Peso" stroke="#b6f36a" strokeWidth={2.5} fill="url(#weight)" dot={false} activeDot={{ r: 5, strokeWidth: 0 }} /></AreaChart></ResponsiveContainer></section>}
-    {rows.length > 0 && <section className="panel"><div className="section-head"><h3>Registros</h3>{busy ? <span className="pill">Subiendo foto…</span> : <span className="pill">{rows.length}</span>}</div><p className="hint">Tocá la cámara para sumar una foto de progreso a cada registro.</p><div className="list">{newestFirst.map((r, i) => <WeightRow key={`${r.id}-${r.date}-${r.weight_kg}`} row={r} prev={newestFirst[i + 1]} version={versions[r.id] || 0} onChanged={load} onDeleted={load} onOpenPhoto={() => setViewer(r)} onUpload={(f) => void upload(r, f)} />)}</div></section>}
+    {rows.length > 0 && <section className="panel"><div className="section-head"><h3>Registros</h3>{busy ? <span className="pill">Subiendo foto…</span> : <span className="pill">{rows.length}</span>}</div><p className="hint privacy-note"><Lock size={13} /> Tocá la cámara para sumar una foto de progreso. Son privadas: solo las ves vos.</p><div className="list">{newestFirst.map((r, i) => <WeightRow key={`${r.id}-${r.date}-${r.weight_kg}`} row={r} prev={newestFirst[i + 1]} version={versions[r.id] || 0} onChanged={load} onDeleted={load} onOpenPhoto={() => setViewer(r)} onUpload={(f) => void upload(r, f)} />)}</div></section>}
     {!rows.length && <section className="panel"><Empty icon={<Scale />} title="Sin registros de peso">Cargá tu peso de hoy para empezar a ver la evolución.</Empty></section>}
     {viewer && <div className="lightbox" onClick={() => setViewer(null)}><div className="lightbox-inner" onClick={(e) => e.stopPropagation()}>
       <Photo id={viewer.id} version={versions[viewer.id] || 0} className="lightbox-img" />
@@ -1044,7 +1058,7 @@ function Profile() {
         </div>
         {user.created_at && <div className="member-since"><CalendarDays size={14} /> Miembro desde {new Date(user.created_at).toLocaleDateString("es-AR", { month: "long", year: "numeric" })}</div>}
         <div className="profile-links">
-          <Link to="/peso" className="row link-row"><span className="row-icon"><Scale size={17} /></span><span className="row-main">Peso y fotos de progreso</span><ChevronRight size={16} className="chev" /></Link>
+          <Link to="/peso" className="row link-row"><span className="row-icon"><Scale size={17} /></span><span className="row-main">Peso y fotos de progreso<small className="no-cap"><Lock size={11} /> Tus fotos son privadas</small></span><ChevronRight size={16} className="chev" /></Link>
           <Link to="/entrenamientos" className="row link-row"><span className="row-icon"><CalendarDays size={17} /></span><span className="row-main">Historial de entrenamientos</span><ChevronRight size={16} className="chev" /></Link>
           <Link to={`/usuario?id=${user.id}`} className="row link-row"><span className="row-icon"><Globe size={17} /></span><span className="row-main">Cómo te ven tus amigos</span><ChevronRight size={16} className="chev" /></Link>
         </div>

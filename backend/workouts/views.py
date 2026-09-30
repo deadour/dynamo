@@ -133,21 +133,17 @@ def import_shared_routine(request, token):
         Routine.objects.prefetch_related("items__exercise"),
         share_token=token,
     )
+    routine = copy_routine(source, request.user, f"Copia de {source.name}")
+    return Response(RoutineSerializer(routine, context={"request": request}).data, status=status.HTTP_201_CREATED)
+
+
+def copy_routine(source, user, name):
+    """Copia una rutina ajena a la cuenta de `user` (los ejercicios propios privados también se copian)."""
     with transaction.atomic():
-        routine = Routine.objects.create(
-            user=request.user,
-            name=f"Copia de {source.name}"[:120],
-            notes=source.notes,
-        )
+        routine = Routine.objects.create(user=user, name=name[:120], notes=source.notes)
         RoutineExercise.objects.bulk_create([
-            RoutineExercise(
-                routine=routine,
-                exercise=_usable_exercise(item.exercise, request.user),
-                order=item.order,
-                target_sets=item.target_sets,
-                target_reps=item.target_reps,
-            )
+            RoutineExercise(routine=routine, exercise=_usable_exercise(item.exercise, user), order=item.order,
+                            target_sets=item.target_sets, target_reps=item.target_reps)
             for item in source.items.all()
         ])
-    routine = Routine.objects.prefetch_related("items__exercise").get(pk=routine.pk)
-    return Response(RoutineSerializer(routine, context={"request": request}).data, status=status.HTTP_201_CREATED)
+    return Routine.objects.prefetch_related("items__exercise").get(pk=routine.pk)

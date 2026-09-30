@@ -712,6 +712,7 @@ input[type="date"]::-webkit-datetime-edit { padding: 0; }
 .person-link:hover .row-main { color: var(--accent); }
 .person-link small { color: var(--accent) !important; }
 .follow-btn { padding: 8px 14px; font-size: 13px; flex: none; }
+.friend-routine .row-main small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .user-hero { display: grid; justify-items: center; gap: 16px; text-align: center; }
 .user-counts { display: flex; gap: 28px; }
 .user-counts span { display: grid; gap: 2px; color: var(--muted); font-size: 12px; }
@@ -776,6 +777,12 @@ input[type="date"]::-webkit-datetime-edit { padding: 0; }
 .notif-icon.kind-like > i { color: #ff6b8a; }
 .notif-emoji { font-size: 22px; }
 .unread-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex: none; }
+
+/* ---------- privacidad ---------- */
+.privacy-note { display: flex; align-items: center; gap: 6px; }
+.privacy-note svg, .pill.private svg { flex: none; color: var(--accent); }
+.pill.private { gap: 5px; }
+.row-main small svg { vertical-align: -1px; margin-right: 3px; }
 
 /* ---------- guardar en rutina ---------- */
 .sheet-sub { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
