@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Link, NavLink, Route, Routes, useNavigate, useParams } from "react-router-dom";
+import { BrowserRouter, Link, Navigate, NavLink, Route, Routes, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Activity, ArrowLeft, Camera, CalendarDays, Check, ChevronRight, Dumbbell, Flame, History, Home, LogOut, Pencil, Plus, Save, Scale, Search, ShieldCheck, SlidersHorizontal, Sparkles, Timer, Trash2, TrendingDown, TrendingUp, Trophy, UserRound, Users, X } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import "./styles.css";
@@ -10,15 +10,23 @@ import "./styles.css";
 const API = import.meta.env.VITE_API_URL ?? (import.meta.env.PROD ? "" : "http://localhost:8000");
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 declare global { interface Window { google?: { accounts: { id: { initialize: (options: { client_id: string; callback: (response: { credential: string }) => void }) => void; renderButton: (element: HTMLElement, options: Record<string, string>) => void } } } } }
+// Sesión por token (header Authorization): funciona aunque el navegador bloquee cookies de terceros (Safari/iOS).
+const TOKEN_KEY = "dynamo.token";
+const getToken = () => { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } };
+const setToken = (value: string | null) => { try { if (value) localStorage.setItem(TOKEN_KEY, value); else localStorage.removeItem(TOKEN_KEY); } catch { /* sin storage: queda la cookie */ } };
+const authHeaders = (): Record<string, string> => { const token = getToken(); return token ? { Authorization: `Token ${token}` } : {}; };
 export async function api(path: string, options: RequestInit = {}) {
-  const method = options.method || "GET"; let token: string | undefined;
-  if (method !== "GET") { const csrfResponse = await fetch(`${API}/csrf/`, { credentials: "include" }); const csrfData = await csrfResponse.json(); token = csrfData.csrfToken; }
+  const method = options.method || "GET"; let csrf: string | undefined;
+  // Con token no hace falta CSRF; sin token (primer login) se pide por si hay sesión por cookie.
+  if (method !== "GET" && !getToken()) { try { csrf = (await (await fetch(`${API}/csrf/`, { credentials: "include" })).json()).csrfToken; } catch { /* seguimos sin CSRF */ } }
   const isJson = !(options.body instanceof Blob);
-  const response = await fetch(`${API}${path}`, { ...options, credentials: "include", headers: { ...(isJson ? { "Content-Type": "application/json" } : {}), ...(token ? { "X-CSRFToken": token } : {}), ...(options.headers as Record<string, string> | undefined) } });
-  // Sesión vencida o cookie bloqueada: se avisa a la app para volver al login en vez de dejar pantallas vacías.
-  if ((response.status === 401 || response.status === 403) && !path.startsWith("/api/auth/") && !path.startsWith("/api/admin/")) window.dispatchEvent(new Event("dynamo:unauthorized"));
+  const response = await fetch(`${API}${path}`, { ...options, credentials: "include", headers: { ...(isJson ? { "Content-Type": "application/json" } : {}), ...(csrf ? { "X-CSRFToken": csrf } : {}), ...authHeaders(), ...(options.headers as Record<string, string> | undefined) } });
+  // Sesión vencida o bloqueada: se vuelve al login en vez de dejar pantallas vacías.
+  if ((response.status === 401 || response.status === 403) && !path.startsWith("/api/auth/") && !path.startsWith("/api/admin/")) { setToken(null); window.dispatchEvent(new Event("dynamo:unauthorized")); }
   if (!response.ok) throw new Error((await response.json().catch(() => ({}))).detail || "No se pudo completar la operación");
-  return response.status === 204 ? null : response.json();
+  const data = response.status === 204 ? null : await response.json();
+  if (data && typeof data === "object" && typeof data.token === "string") setToken(data.token);
+  return data;
 }
 
 // ---------- helpers de formato ----------
@@ -55,11 +63,12 @@ async function compressImage(file: File, max = 1280): Promise<Blob> {
 }
 function usePhoto(id: string | null, version = 0) {
   const [url, setUrl] = useState<string>();
-  useEffect(() => { if (!id) return; let objectUrl: string | undefined; void fetch(`${API}/api/body-weight/${id}/photo/?v=${version}`, { credentials: "include" }).then((r) => r.ok ? r.blob() : null).then((blob) => { if (blob?.type.startsWith("image/")) { objectUrl = URL.createObjectURL(blob); setUrl(objectUrl); } }); return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); }; }, [id, version]);
+  useEffect(() => { if (!id) return; let objectUrl: string | undefined; void fetch(`${API}/api/body-weight/${id}/photo/?v=${version}`, { credentials: "include", headers: authHeaders() }).then((r) => r.ok ? r.blob() : null).then((blob) => { if (blob?.type.startsWith("image/")) { objectUrl = URL.createObjectURL(blob); setUrl(objectUrl); } }); return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); }; }, [id, version]);
   return url;
 }
 
 const UserContext = createContext<any>(null);
+const useIdParam = () => useSearchParams()[0].get("id") || "";
 const SetUserContext = createContext<(user: any) => void>(() => undefined);
 
 // ---------- piezas visuales ----------
@@ -113,7 +122,7 @@ function AuthBackground() {
 export function Login({ onLogin }: { onLogin?: (user: any) => void }) {
   const navigate = useNavigate(); const [error, setError] = useState(""); const googleButton = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<"login" | "register">("login"); const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [name, setName] = useState(""); const [busy, setBusy] = useState(false);
-  const done = (user: any) => void api("/api/auth/me/").then(() => onLogin ? onLogin(user) : navigate("/dashboard")).catch(() => setError("Iniciaste sesión, pero tu navegador bloqueó la cookie de sesión (cookies de terceros). Probá en otro navegador o permití las cookies para este sitio."));
+  const done = (user: any) => void api("/api/auth/me/").then(() => onLogin ? onLogin(user) : navigate("/inicio")).catch(() => setError("No pudimos mantener la sesión iniciada. Probá de nuevo."));
   const submit = () => void api("/api/auth/dev_login/", { method: "POST", body: JSON.stringify({ email: "demo@dynamo.local" }) }).then(done).catch((e: Error) => setError(e.message));
   const submitForm = (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setError("");
@@ -154,15 +163,15 @@ export function Login({ onLogin }: { onLogin?: (user: any) => void }) {
     </div>
   </div>;
 }
-export function ProtectedRoute({ children }: { children: React.ReactNode }) { const [user, setUser] = useState<unknown>(); useEffect(() => { void api("/api/auth/me/").then(setUser).catch(() => setUser(null)); const expire = () => setUser(null); window.addEventListener("dynamo:unauthorized", expire); return () => window.removeEventListener("dynamo:unauthorized", expire); }, []); if (user === undefined) return <Loading label="Cargando Dynamo…" />; return user ? <SetUserContext.Provider value={setUser}><UserContext.Provider value={user}>{children}</UserContext.Provider></SetUserContext.Provider> : <Login onLogin={setUser} />; }
+export function ProtectedRoute({ children }: { children: React.ReactNode }) { const [user, setUser] = useState<unknown>(); useEffect(() => { void api("/api/auth/me/").then(setUser).catch(() => { setToken(null); setUser(null); }); const expire = () => setUser(null); window.addEventListener("dynamo:unauthorized", expire); return () => window.removeEventListener("dynamo:unauthorized", expire); }, []); if (user === undefined) return <Loading label="Cargando Dynamo…" />; return user ? <SetUserContext.Provider value={setUser}><UserContext.Provider value={user}>{children}</UserContext.Provider></SetUserContext.Provider> : <Login onLogin={setUser} />; }
 
 // ---------- layout ----------
 const NAV = [
-  { to: "/dashboard", label: "Inicio", icon: Home },
-  { to: "/exercises", label: "Ejercicios", icon: Search },
-  { to: "/workouts/new", label: "Entrenar", icon: Dumbbell, main: true },
-  { to: "/body-weight", label: "Peso", icon: Scale },
-  { to: "/profile", label: "Perfil", icon: UserRound },
+  { to: "/inicio", label: "Inicio", icon: Home },
+  { to: "/ejercicios", label: "Ejercicios", icon: Search },
+  { to: "/entrenar", label: "Entrenar", icon: Dumbbell, main: true },
+  { to: "/peso", label: "Peso", icon: Scale },
+  { to: "/perfil", label: "Perfil", icon: UserRound },
 ];
 function Avatar({ user, size = 34 }: { user: any; size?: number }) {
   const initial = (user?.name || user?.email || "?").trim().charAt(0).toUpperCase();
@@ -170,14 +179,14 @@ function Avatar({ user, size = 34 }: { user: any; size?: number }) {
 }
 function Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate(); const user = useContext(UserContext);
-  const logout = () => void api("/api/auth/logout/", { method: "POST" }).then(() => navigate("/login"));
+  const logout = () => void api("/api/auth/logout/", { method: "POST" }).catch(() => undefined).finally(() => { setToken(null); navigate("/ingresar"); });
   return <>
     <header className="topbar">
-      <Link to="/dashboard" className="brand" aria-label="Dynamo, inicio"><Logo size={34} /><Wordmark height={22} /></Link>
+      <Link to="/inicio" className="brand" aria-label="Dynamo, inicio"><Logo size={34} /><Wordmark height={22} /></Link>
       <nav className="top-nav">{NAV.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to} end><Icon size={16} />{label}</NavLink>)}</nav>
       <div className="header-actions">
         {user?.is_staff && <NavLink to="/admin" className="icon-btn admin-link" aria-label="Administración" title="Administración"><ShieldCheck size={18} /></NavLink>}
-        <Link to="/profile" aria-label="Mi perfil"><Avatar user={user} /></Link>
+        <Link to="/perfil" aria-label="Mi perfil"><Avatar user={user} /></Link>
         <button className="icon-btn header-logout" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={logout}><LogOut size={18} /></button>
       </div>
     </header>
@@ -195,7 +204,7 @@ function Dashboard() {
   const history = data?.weight_history || [];
   const delta = history.length > 1 ? history[history.length - 1].weight_kg - history[0].weight_kg : null;
   return <>
-    <PageHead eyebrow={new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })} title={<>{greeting}{firstName && <>, <span className="accent">{firstName}</span></>}</>} action={<Link className="btn primary" to="/workouts/new"><Plus size={18} /> Entrenar</Link>} />
+    <PageHead eyebrow={new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })} title={<>{greeting}{firstName && <>, <span className="accent">{firstName}</span></>}</>} action={<Link className="btn primary" to="/entrenar"><Plus size={18} /> Entrenar</Link>} />
     <div className="stats">
       <Stat label="Peso actual" icon={<Scale size={16} />} value={kg(data?.weight_current)} unit="kg">
         {delta !== null && <div className={`delta ${delta > 0 ? "up" : delta < 0 ? "down" : ""}`}>{delta > 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}{delta > 0 ? "+" : ""}{kg(delta)} kg en 30 días</div>}
@@ -215,8 +224,8 @@ function Dashboard() {
       <div><small>Mejor 1RM estimado</small><b>{kg(data.prs.best_1rm)} kg</b></div>
     </section>}
     <section className="panel">
-      <div className="section-head"><h3>Entrenamientos recientes</h3><Link to="/workouts">Ver todos <ChevronRight size={15} /></Link></div>
-      {data?.recent_workouts?.length ? <div className="list">{data.recent_workouts.map((w: any) => <Link className="row link-row" to={`/workouts/${w.id}`} key={w.id}><span className="row-icon"><Dumbbell size={17} /></span><span className="row-main">{w.name}<small>{longDate(w.date)}</small></span><strong>{kg(Math.round(w.volume))} <span>kg</span></strong><ChevronRight size={16} className="chev" /></Link>)}</div> : <Empty icon={<Dumbbell />} title="Todavía no hay entrenamientos"><Link to="/workouts/new" className="btn ghost">Registrar el primero</Link></Empty>}
+      <div className="section-head"><h3>Entrenamientos recientes</h3><Link to="/entrenamientos">Ver todos <ChevronRight size={15} /></Link></div>
+      {data?.recent_workouts?.length ? <div className="list">{data.recent_workouts.map((w: any) => <Link className="row link-row" to={`/entrenamiento?id=${w.id}`} key={w.id}><span className="row-icon"><Dumbbell size={17} /></span><span className="row-main">{w.name}<small>{longDate(w.date)}</small></span><strong>{kg(Math.round(w.volume))} <span>kg</span></strong><ChevronRight size={16} className="chev" /></Link>)}</div> : <Empty icon={<Dumbbell />} title="Todavía no hay entrenamientos"><Link to="/entrenar" className="btn ghost">Registrar el primero</Link></Empty>}
     </section>
   </>;
 }
@@ -236,7 +245,7 @@ function Exercises() {
         <button className="btn secondary" onClick={load}><SlidersHorizontal size={16} /> Filtrar</button>
       </div>
     </div>
-    <div className="exercise-grid">{items.map((item) => <Link className="exercise" to={`/progress/${item.id}`} key={item.id}>
+    <div className="exercise-grid">{items.map((item) => <Link className="exercise" to={`/ejercicio?id=${item.id}`} key={item.id}>
       <div className="exercise-media">{item.image_1 ? <img src={item.image_1} alt="" loading="lazy" /> : <div className="image-placeholder"><Dumbbell /></div>}{item.difficulty && <span className={`badge lvl-${item.difficulty.toLowerCase()}`}>{LEVELS[item.difficulty.toLowerCase()] || item.difficulty}</span>}</div>
       <div className="exercise-body">
         <b>{item.name_es || item.name}</b>
@@ -356,8 +365,8 @@ function Workouts() {
   const [rows, setRows] = useState<any[]>([]); const [loaded, setLoaded] = useState(false);
   useEffect(() => { void api("/api/workouts/").then((d) => { setRows(d.results || d); setLoaded(true); }); }, []);
   return <>
-    <PageHead eyebrow="Historial" title="Tus entrenamientos" action={<Link className="btn primary" to="/workouts/new" aria-label="Nuevo entrenamiento"><Plus size={18} /> Nuevo</Link>} />
-    <section className="panel">{rows.length ? <div className="list">{rows.map((w) => { const d = new Date(w.started_at); return <Link className="row link-row" to={`/workouts/${w.id}`} key={w.id}><span className="date-tile"><b>{d.getDate()}</b><small>{d.toLocaleDateString("es-AR", { month: "short" }).replace(".", "")}</small></span><span className="row-main">{w.name}<small>{d.toLocaleDateString("es-AR", { weekday: "long" })} · {d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</small></span><strong>{kg(Math.round(w.volume))} <span>kg</span></strong><ChevronRight size={16} className="chev" /></Link>; })}</div> : loaded && <Empty icon={<CalendarDays />} title="Aún no registraste entrenamientos"><Link to="/workouts/new" className="btn ghost">Empezar ahora</Link></Empty>}</section>
+    <PageHead eyebrow="Historial" title="Tus entrenamientos" action={<Link className="btn primary" to="/entrenar" aria-label="Nuevo entrenamiento"><Plus size={18} /> Nuevo</Link>} />
+    <section className="panel">{rows.length ? <div className="list">{rows.map((w) => { const d = new Date(w.started_at); return <Link className="row link-row" to={`/entrenamiento?id=${w.id}`} key={w.id}><span className="date-tile"><b>{d.getDate()}</b><small>{d.toLocaleDateString("es-AR", { month: "short" }).replace(".", "")}</small></span><span className="row-main">{w.name}<small>{d.toLocaleDateString("es-AR", { weekday: "long" })} · {d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</small></span><strong>{kg(Math.round(w.volume))} <span>kg</span></strong><ChevronRight size={16} className="chev" /></Link>; })}</div> : loaded && <Empty icon={<CalendarDays />} title="Aún no registraste entrenamientos"><Link to="/entrenar" className="btn ghost">Empezar ahora</Link></Empty>}</section>
   </>;
 }
 
@@ -368,18 +377,18 @@ function EditableSet({ set, index, onSaved, onDelete }: { set: any; index: numbe
   return <div className="set-line"><span className="set-num">{index + 1}</span><span>{kg(set.weight_kg)} <small>kg</small></span><span>{set.reps} <small>reps</small></span><div className="line-actions"><IconButton label="Editar serie" onClick={() => setEditing(true)}><Pencil size={14} /></IconButton><ConfirmButton iconOnly label="Borrar serie" confirmLabel="Borrar" onConfirm={onDelete} /></div></div>;
 }
 function WorkoutDetail() {
-  const { id } = useParams(); const navigate = useNavigate(); const [data, setData] = useState<any>(); const [renaming, setRenaming] = useState(false); const [name, setName] = useState("");
+  const id = useIdParam(); const navigate = useNavigate(); const [data, setData] = useState<any>(); const [renaming, setRenaming] = useState(false); const [name, setName] = useState("");
   useEffect(() => { void api(`/api/workouts/${id}/`).then((d) => { setData(d); setName(d.name); }); }, [id]);
   if (!data) return <Loading />;
   const allSets = data.exercises.flatMap((e: any) => e.sets); const volume = allSets.reduce((sum: number, s: any) => sum + Number(s.weight_kg) * Number(s.reps), 0);
   const updateExercise = (exId: string, fn: (e: any) => any) => setData((d: any) => ({ ...d, exercises: d.exercises.map((e: any) => e.id === exId ? fn(e) : e) }));
   const rename = () => void api(`/api/workouts/${id}/`, { method: "PATCH", body: JSON.stringify({ name }) }).then((d) => { setData((old: any) => ({ ...old, name: d.name })); setRenaming(false); });
-  const remove = () => void api(`/api/workouts/${id}/`, { method: "DELETE" }).then(() => { if (JSON.parse(localStorage.getItem(ACTIVE_KEY) || "null")?.id === id) localStorage.removeItem(ACTIVE_KEY); navigate("/workouts"); });
+  const remove = () => void api(`/api/workouts/${id}/`, { method: "DELETE" }).then(() => { if (JSON.parse(localStorage.getItem(ACTIVE_KEY) || "null")?.id === id) localStorage.removeItem(ACTIVE_KEY); navigate("/entrenamientos"); });
   const removeExercise = (exId: string) => void api(`/api/workout-exercises/${exId}/`, { method: "DELETE" }).then(() => setData((d: any) => ({ ...d, exercises: d.exercises.filter((e: any) => e.id !== exId) })));
   const removeSet = (exId: string, setId: string) => void api(`/api/workout-sets/${setId}/`, { method: "DELETE" }).then(() => updateExercise(exId, (e) => ({ ...e, sets: e.sets.filter((s: any) => s.id !== setId) })));
   const title = renaming ? <span className="rename"><input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && rename()} autoFocus /><IconButton label="Guardar nombre" onClick={rename}><Check size={16} /></IconButton><IconButton label="Cancelar" onClick={() => { setName(data.name); setRenaming(false); }}><X size={16} /></IconButton></span> : <span className="title-edit">{data.name}<IconButton label="Renombrar" onClick={() => setRenaming(true)}><Pencil size={15} /></IconButton></span>;
   return <>
-    <PageHead back="/workouts" eyebrow={data.started_at ? new Date(data.started_at).toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" }) : undefined} title={title} action={<ConfirmButton label="Borrar" confirmLabel="¿Borrar entrenamiento?" onConfirm={remove} />} />
+    <PageHead back="/entrenamientos" eyebrow={data.started_at ? new Date(data.started_at).toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" }) : undefined} title={title} action={<ConfirmButton label="Borrar" confirmLabel="¿Borrar entrenamiento?" onConfirm={remove} />} />
     <div className="session-bar">
       <div><Dumbbell size={16} /><b>{data.exercises.length}</b><small>Ejercicios</small></div>
       <div><Activity size={16} /><b>{allSets.length}</b><small>Series</small></div>
@@ -464,13 +473,13 @@ function BodyWeight() {
 }
 
 function Progress() {
-  const { id } = useParams(); const [data, setData] = useState<any>();
+  const id = useIdParam(); const [data, setData] = useState<any>();
   useEffect(() => { void api(`/api/progress/exercises/${id}/`).then(setData); }, [id]);
   if (!data) return <Loading label="Cargando progreso…" />;
   return <>
     <div className="progress-hero">
       {data.exercise.image_1 && <img src={data.exercise.image_1} alt="" />}
-      <PageHead back="/exercises" eyebrow="Progreso del ejercicio" title={data.exercise.name} />
+      <PageHead back="/ejercicios" eyebrow="Progreso del ejercicio" title={data.exercise.name} />
     </div>
     <div className="stats">
       <Stat label="Mejor peso" icon={<Trophy size={16} />} value={kg(data.summary.best_weight)} unit="kg" />
@@ -491,7 +500,7 @@ function Notice({ state }: { state: { ok: boolean; text: string } | null }) {
 }
 function Profile() {
   const setGlobalUser = useContext(SetUserContext); const navigate = useNavigate();
-  const logout = () => void api("/api/auth/logout/", { method: "POST" }).then(() => navigate("/login"));
+  const logout = () => void api("/api/auth/logout/", { method: "POST" }).catch(() => undefined).finally(() => { setToken(null); navigate("/ingresar"); });
   const [user, setUser] = useState<any>(); const [name, setName] = useState(""); const [email, setEmail] = useState(""); const [emailPassword, setEmailPassword] = useState("");
   const [current, setCurrent] = useState(""); const [next, setNext] = useState(""); const [confirm, setConfirm] = useState("");
   const [profileMsg, setProfileMsg] = useState<{ ok: boolean; text: string } | null>(null); const [passwordMsg, setPasswordMsg] = useState<{ ok: boolean; text: string } | null>(null); const [photoBusy, setPhotoBusy] = useState(false);
@@ -573,7 +582,7 @@ function AdminUsers() {
       <Stat label="Entrenamientos" icon={<Dumbbell size={16} />} tone="orange" value={rows.reduce((sum, u) => sum + (u.workouts || 0), 0)}><div className="hint">En esta página</div></Stat>
     </div>
     <div className="search"><Search size={18} /><input aria-label="Buscar usuario" placeholder="Buscar por nombre o email…" value={query} onChange={(e) => setQuery(e.target.value)} /></div>
-    <section className="panel chart-panel">{rows.length ? <div className="list">{rows.map((u) => <Link to={`/admin/users/${u.id}`} className="row link-row" key={u.id}>
+    <section className="panel chart-panel">{rows.length ? <div className="list">{rows.map((u) => <Link to={`/admin/usuario?id=${u.id}`} className="row link-row" key={u.id}>
       <Avatar user={u} size={40} />
       <span className="row-main">{u.name || "Sin nombre"}<small className="no-cap">{u.email}</small></span>
       <span className="admin-badges">{u.is_staff && <span className="chip down">Admin</span>}{!u.is_active && <span className="chip up">Bloqueado</span>}<span className="chip muted">{u.auth === "google" ? "Google" : "Email"}</span></span>
@@ -583,7 +592,7 @@ function AdminUsers() {
   </AdminOnly>;
 }
 function AdminUserDetail() {
-  const { id } = useParams(); const me = useContext(UserContext); const [data, setData] = useState<any>(); const [open, setOpen] = useState<string | null>(null); const [error, setError] = useState("");
+  const id = useIdParam(); const me = useContext(UserContext); const [data, setData] = useState<any>(); const [open, setOpen] = useState<string | null>(null); const [error, setError] = useState("");
   useEffect(() => { if (me?.is_staff) void api(`/api/admin/users/${id}/`).then(setData); }, [id]);
   const toggle = () => void api(`/api/admin/users/${id}/`, { method: "PATCH", body: JSON.stringify({ is_active: !data.is_active }) }).then(setData).catch((e: Error) => setError(e.message));
   if (!me?.is_staff) return <AdminOnly>{null}</AdminOnly>;
@@ -619,6 +628,35 @@ function AdminUserDetail() {
   </>;
 }
 
-function App() { return <Routes><Route path="/login" element={<Login />} /><Route path="*" element={<ProtectedRoute><Layout><Routes><Route path="/dashboard" element={<Dashboard />} /><Route path="/exercises" element={<Exercises />} /><Route path="/workouts" element={<Workouts />} /><Route path="/workouts/:id" element={<WorkoutDetail />} /><Route path="/workouts/new" element={<WorkoutRecorder />} /><Route path="/body-weight" element={<BodyWeight />} /><Route path="/progress/:id" element={<Progress />} /><Route path="/profile" element={<Profile />} /><Route path="/admin" element={<AdminUsers />} /><Route path="/admin/users/:id" element={<AdminUserDetail />} /><Route path="*" element={<Dashboard />} /></Routes></Layout></ProtectedRoute>} /></Routes>; }
+function LegacyRedirect({ to }: { to: string }) { const { id } = useParams(); return <Navigate replace to={id ? `${to}?id=${id}` : to} />; }
+function App() {
+  return <Routes>
+    <Route path="/ingresar" element={<Login />} />
+    <Route path="/login" element={<Navigate replace to="/ingresar" />} />
+    <Route path="*" element={<ProtectedRoute><Layout><Routes>
+      <Route path="/inicio" element={<Dashboard />} />
+      <Route path="/ejercicios" element={<Exercises />} />
+      <Route path="/ejercicio" element={<Progress />} />
+      <Route path="/entrenar" element={<WorkoutRecorder />} />
+      <Route path="/entrenamientos" element={<Workouts />} />
+      <Route path="/entrenamiento" element={<WorkoutDetail />} />
+      <Route path="/peso" element={<BodyWeight />} />
+      <Route path="/perfil" element={<Profile />} />
+      <Route path="/admin" element={<AdminUsers />} />
+      <Route path="/admin/usuario" element={<AdminUserDetail />} />
+      {/* URLs viejas en inglés: redirigen para no romper links guardados */}
+      <Route path="/dashboard" element={<Navigate replace to="/inicio" />} />
+      <Route path="/exercises" element={<Navigate replace to="/ejercicios" />} />
+      <Route path="/progress/:id" element={<LegacyRedirect to="/ejercicio" />} />
+      <Route path="/workouts/new" element={<Navigate replace to="/entrenar" />} />
+      <Route path="/workouts" element={<Navigate replace to="/entrenamientos" />} />
+      <Route path="/workouts/:id" element={<LegacyRedirect to="/entrenamiento" />} />
+      <Route path="/body-weight" element={<Navigate replace to="/peso" />} />
+      <Route path="/profile" element={<Navigate replace to="/perfil" />} />
+      <Route path="/admin/users/:id" element={<LegacyRedirect to="/admin/usuario" />} />
+      <Route path="*" element={<Navigate replace to="/inicio" />} />
+    </Routes></Layout></ProtectedRoute>} />
+  </Routes>;
+}
 const root = document.getElementById("root");
 if (root) createRoot(root).render(<BrowserRouter><App /></BrowserRouter>);

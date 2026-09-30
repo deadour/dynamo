@@ -102,3 +102,15 @@ def test_admin_emails_promote_only_google_verified_logins(monkeypatch, settings)
     monkeypatch.setattr("users.views.id_token.verify_oauth2_token", lambda *a, **k: {"sub": "g-boss", "email": "boss@example.com", "email_verified": True})
     APIClient().post("/api/auth/google/", {"credential": "x"}, format="json")
     assert User.objects.get(email="boss@example.com").is_staff is True
+
+
+@pytest.mark.django_db
+def test_token_auth_works_without_cookies_and_logout_revokes_it():
+    token = APIClient().post("/api/auth/register/", {"email": "safari@example.com", "password": "gym-rat-2026"}, format="json").json()["token"]
+    client = APIClient()  # cliente nuevo: sin cookie de sesión, como Safari con cookies bloqueadas
+    client.credentials(HTTP_AUTHORIZATION=f"Token {token}")
+
+    assert client.get("/api/auth/me/").json()["email"] == "safari@example.com"
+    assert client.post("/api/body-weight/", {"date": "2026-01-01", "weight_kg": 80}, format="json").status_code == 201
+    assert client.post("/api/auth/logout/").status_code == 204
+    assert client.get("/api/auth/me/").status_code in (401, 403)

@@ -14,6 +14,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.authtoken.models import Token
 from rest_framework.throttling import ScopedRateThrottle
 
 from bodymetrics.views import ImageParser, detect_image_type
@@ -21,6 +22,14 @@ from bodymetrics.views import ImageParser, detect_image_type
 from .models import User
 
 MAX_AVATAR_BYTES = 500_000
+
+
+def signed_in(request, user, status=200):
+    """Inicia la sesión y devuelve también un token: el front lo manda en el header Authorization,
+    así funciona aunque el navegador bloquee cookies de terceros (Safari/iOS)."""
+    login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+    token, _ = Token.objects.get_or_create(user=user)
+    return Response({**UserSerializer(user).data, "token": token.key}, status=status)
 from .serializers import UserSerializer
 
 
@@ -48,16 +57,14 @@ class AuthViewSet(viewsets.ViewSet):
             return Response({"detail": " ".join(exc.messages)}, status=400)
         user.set_password(password)
         user.save()
-        login(request, user, backend="django.contrib.auth.backends.ModelBackend")
-        return Response(UserSerializer(user).data, status=201)
+        return signed_in(request, user, status=201)
 
     @action(detail=False, methods=["post"], permission_classes=[AllowAny], url_path="login")
     def login_user(self, request):
         user = authenticate(request, username=(request.data.get("email") or "").strip().lower(), password=request.data.get("password") or "")
         if user is None:
             return Response({"detail": "Email o contraseña incorrectos."}, status=400)
-        login(request, user)
-        return Response(UserSerializer(user).data)
+        return signed_in(request, user)
     @action(detail=False, methods=["get", "patch"])
     def me(self, request):
         if request.method == "PATCH":
@@ -89,8 +96,7 @@ class AuthViewSet(viewsets.ViewSet):
         user, _ = User.objects.get_or_create(
             email=request.data.get("email", "demo@dynamo.local"), defaults={"name": "Demo"}
         )
-        login(request, user)
-        return Response(UserSerializer(user).data)
+        return signed_in(request, user)
 
     @action(detail=False, methods=["post"], permission_classes=[AllowAny])
     def google(self, request):
@@ -121,8 +127,7 @@ class AuthViewSet(viewsets.ViewSet):
         if user.email.lower() in settings.ADMIN_EMAILS:
             user.is_staff = True
         user.save()
-        login(request, user, backend="django.contrib.auth.backends.ModelBackend")
-        return Response(UserSerializer(user).data)
+        return signed_in(request, user)
 
     @action(detail=False, methods=["post"])
     def password(self, request):
@@ -136,8 +141,10 @@ class AuthViewSet(viewsets.ViewSet):
             return Response({"detail": " ".join(exc.messages)}, status=400)
         user.set_password(new_password)
         user.save(update_fields=["password"])
+        # Cambiar la contraseña cierra las otras sesiones: token nuevo para este dispositivo.
+        Token.objects.filter(user=user).delete()
         update_session_auth_hash(request, user)
-        return Response(UserSerializer(user).data)
+        return signed_in(request, user)
 
     @action(detail=False, methods=["put", "delete"], parser_classes=[ImageParser])
     def avatar(self, request):
@@ -157,6 +164,8 @@ class AuthViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=["post"], url_path="logout")
     def logout_user(self, request):
+        if request.user.is_authenticated:
+            Token.objects.filter(user=request.user).delete()
         logout(request)
         return Response(status=204)
 
