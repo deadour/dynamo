@@ -1,4 +1,4 @@
-from django.db.models import Count, Max, Q, Value
+from django.db.models import Count, Exists, Max, OuterRef, Q, Subquery, Value
 from django.db.models.functions import Coalesce, NullIf
 import time
 
@@ -38,7 +38,15 @@ class ExerciseViewSet(viewsets.ModelViewSet):
             for muscle in [m.strip() for m in params["muscle"].split(",") if m.strip()]:
                 muscles |= Q(primary_muscles__icontains=muscle)
             q = q.filter(muscles)
-        return q.annotate(display_name=Coalesce(NullIf("name_es", Value("")), "name")).order_by("display_name").distinct()
+        q = q.annotate(display_name=Coalesce(NullIf("name_es", Value("")), "name"))
+        if params.get("mine") == "1":
+            # Ejercicios que el usuario registró alguna vez, de los más hechos a los menos.
+            from workouts.models import WorkoutExercise
+            done = WorkoutExercise.objects.filter(workout__user=self.request.user, exercise=OuterRef("pk"))
+            times = done.values("exercise").annotate(n=Count("workout", distinct=True)).values("n")
+            last = done.order_by("-workout__started_at").values("workout__started_at")[:1]
+            return q.filter(Exists(done)).annotate(times=Subquery(times), last_done=Subquery(last)).order_by("-times", "-last_done", "display_name")
+        return q.order_by("display_name").distinct()
     def get_serializer_class(self):
         return CustomExerciseSerializer if self.action in ("create", "update", "partial_update") else ExerciseSerializer
 

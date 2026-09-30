@@ -493,30 +493,41 @@ function ShareWorkoutSheet({ workoutId, onClose }: { workoutId: string; onClose:
 }
 
 function Exercises() {
-  const [items, setItems] = useState<any[]>([]); const [loaded, setLoaded] = useState(false); const [query, setQuery] = useState(""); const [equipment, setEquipment] = useState(""); const [difficulty, setDifficulty] = useState(""); const [group, setGroup] = useState(""); const [creating, setCreating] = useState(false); const navigate = useNavigate();
-  const load = () => { const params = new URLSearchParams({ search: query.trim() }); const muscles = GROUPS.find((g) => g.key === group)?.muscles; if (muscles) params.set("muscle", muscles.join(",")); if (equipment) params.set("equipment", equipment); if (difficulty) params.set("difficulty", difficulty); void api(`/api/exercises/?${params}`).then((d) => { setItems(d.results || d); setLoaded(true); }); };
-  useEffect(load, []);
+  const [items, setItems] = useState<any[]>([]); const [loaded, setLoaded] = useState(false); const [query, setQuery] = useState(""); const [equipment, setEquipment] = useState(""); const [difficulty, setDifficulty] = useState(""); const [group, setGroup] = useState(""); const [creating, setCreating] = useState(false); const navigate = useNavigate(); const [tab, setTab] = useState<"mine" | "all">("mine"); const [showFilters, setShowFilters] = useState(false);
+  const load = (which = tab) => { const params = new URLSearchParams({ search: query.trim() }); if (which === "mine") params.set("mine", "1"); const muscles = GROUPS.find((g) => g.key === group)?.muscles; if (muscles) params.set("muscle", muscles.join(",")); if (equipment) params.set("equipment", equipment); if (difficulty) params.set("difficulty", difficulty); void api(`/api/exercises/?${params}`).then((d) => { const rows = d.results || d; setItems(rows); setLoaded(true); if (which === "mine" && !rows.length && !query.trim() && !group && !equipment && !difficulty && !loaded) switchTab("all"); }); };
+  const switchTab = (next: "mine" | "all") => { setTab(next); load(next); };
+  useEffect(() => load(), []);
+  // Búsqueda y filtros se aplican solos (sin botón "Filtrar").
+  const first = useRef(true);
+  useEffect(() => { if (first.current) { first.current = false; return; } const t = setTimeout(() => load(), 300); return () => clearTimeout(t); }, [query, group, equipment, difficulty]);
+  const activeFilters = [group, equipment, difficulty].filter(Boolean).length;
   return <>
-    <PageHead eyebrow="Catálogo" title="Ejercicios" action={<button className="btn primary" onClick={() => setCreating(true)}><Plus size={18} /> Crear</button>} />
+    <PageHead eyebrow={tab === "mine" ? "Lo que ya entrenaste" : "Catálogo"} title="Ejercicios" action={<button className="btn primary" onClick={() => setCreating(true)}><Plus size={18} /> Crear</button>} />
+    <div className="segmented" role="tablist">
+      <button type="button" role="tab" aria-selected={tab === "mine"} className={tab === "mine" ? "on" : ""} onClick={() => switchTab("mine")}>Tuyos</button>
+      <button type="button" role="tab" aria-selected={tab === "all"} className={tab === "all" ? "on" : ""} onClick={() => switchTab("all")}>Catálogo</button>
+      <span className="seg-indicator" style={{ transform: `translateX(${tab === "mine" ? 0 : 100}%)` }} />
+    </div>
     {creating && <CustomExerciseSheet initialName={query.trim()} onClose={() => setCreating(false)} onSaved={(ex) => navigate(`/ejercicio?id=${ex.id}`)} />}
     <div className="toolbar">
-      <div className="search"><Search size={18} /><input aria-label="Buscar ejercicio" placeholder="Buscar por nombre…" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && load()} /></div>
-      <div className="filters">
+      <div className="search-row"><div className="search"><Search size={18} /><input aria-label="Buscar ejercicio" type="search" enterKeyHint="search" autoCapitalize="none" autoCorrect="off" placeholder="Buscar por nombre…" value={query} onChange={(e) => setQuery(e.target.value)} /></div>
+        <button type="button" className={`icon-btn filter-btn ${showFilters || activeFilters ? "active" : ""}`} aria-expanded={showFilters} aria-label="Filtros" onClick={() => setShowFilters(!showFilters)}><SlidersHorizontal size={18} />{activeFilters > 0 && <em className="dot-badge">{activeFilters}</em>}</button></div>
+      {showFilters && <div className="filters">
         <select aria-label="Grupo muscular" value={group} onChange={(e) => setGroup(e.target.value)}><option value="">Todos los músculos</option>{GROUPS.map((g) => <option key={g.key} value={g.key}>{g.label}</option>)}</select>
         <select aria-label="Equipamiento" value={equipment} onChange={(e) => setEquipment(e.target.value)}><option value="">Todo el equipamiento</option>{Object.entries(EQUIPMENT).map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select>
         <select aria-label="Dificultad" value={difficulty} onChange={(e) => setDifficulty(e.target.value)}><option value="">Toda dificultad</option><option value="beginner">Principiante</option><option value="intermediate">Intermedio</option><option value="expert">Experto</option></select>
-        <button className="btn secondary" onClick={load}><SlidersHorizontal size={16} /> Filtrar</button>
-      </div>
+        {activeFilters > 0 && <button type="button" className="link-btn" onClick={() => { setGroup(""); setEquipment(""); setDifficulty(""); }}>Limpiar filtros</button>}
+      </div>}
     </div>
     <div className="exercise-grid">{items.map((item) => <Link className="exercise" to={`/ejercicio?id=${item.id}`} key={item.id}>
-      <div className="exercise-media">{item.image_1 ? <img src={item.image_1} alt="" loading="lazy" /> : <div className="image-placeholder"><Dumbbell /></div>}{item.is_custom && <span className="badge custom">Propio</span>}{!item.is_custom && item.difficulty && <span className={`badge lvl-${item.difficulty.toLowerCase()}`}>{LEVELS[item.difficulty.toLowerCase()] || item.difficulty}</span>}</div>
+      <div className="exercise-media">{item.image_1 ? <img src={item.image_1} alt="" loading="lazy" /> : <div className="image-placeholder"><Dumbbell /></div>}{item.times > 0 && <span className="badge times">{item.times}×</span>}{item.is_custom && <span className="badge custom">Propio</span>}{!item.is_custom && item.difficulty && <span className={`badge lvl-${item.difficulty.toLowerCase()}`}>{LEVELS[item.difficulty.toLowerCase()] || item.difficulty}</span>}</div>
       <div className="exercise-body">
         <b>{item.name_es || item.name}</b>
         {item.name_es && item.name_es !== item.name && <small className="original-name">{item.name}</small>}
         <div className="tags">{item.primary_muscles?.slice(0, 2).map((m: string) => <span key={m}>{muscleLabel(m)}</span>)}<span className="muted-tag">{equipmentLabel(item.equipment)}</span>{item.category && item.category !== "strength" && <span className="muted-tag">{label(CATEGORIES, item.category)}</span>}</div>
       </div>
     </Link>)}</div>
-    {loaded && !items.length && <Empty icon={<Search />} title="No encontramos ejercicios">Probá con otro nombre o quitá los filtros.</Empty>}
+    {loaded && !items.length && tab === "mine" && !query.trim() ? <Empty icon={<Dumbbell />} title="Todavía no registraste ejercicios">Cuando entrenes, acá vas a tener tus ejercicios ordenados por los que más hacés.<button type="button" className="btn ghost" onClick={() => switchTab("all")}>Ver el catálogo</button></Empty> : loaded && !items.length && <Empty icon={<Search />} title="No encontramos ejercicios">Probá con otro nombre o quitá los filtros.</Empty>}
   </>;
 }
 

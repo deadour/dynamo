@@ -2,6 +2,8 @@ from rest_framework import serializers
 from django.utils.text import slugify
 from .models import Exercise
 class ExerciseSerializer(serializers.ModelSerializer):
+    times = serializers.IntegerField(read_only=True, required=False)
+    last_done = serializers.DateTimeField(read_only=True, required=False)
     class Meta:
         model = Exercise
         exclude = ["photo", "photo_type"]

@@ -130,3 +130,20 @@ def test_custom_exercise_photo_upload_and_public_serving():
     assert f"/api/exercise-photos/{mine['id']}/" in data["image_1"]
     assert APIClient().get(f"/api/exercise-photos/{mine['id']}/")["Content-Type"] == "image/jpeg"
     assert client.put(f"/api/exercises/{mine['id']}/photo/", b"nope", content_type="image/jpeg").status_code == 400
+
+
+@pytest.mark.django_db
+def test_mine_lists_logged_exercises_most_frequent_first():
+    user = User.objects.create_user("mine@example.com")
+    other = User.objects.create_user("mine-other@example.com")
+    bench = Exercise.objects.create(name="Bench", slug="bench")
+    squat = Exercise.objects.create(name="Squat", slug="squat")
+    Exercise.objects.create(name="Never done", slug="never")
+    for day, exercise in [("01", bench), ("02", squat), ("03", squat)]:
+        WorkoutExercise.objects.create(workout=Workout.objects.create(user=user, started_at=f"2026-01-{day}T10:00:00Z"), exercise=exercise)
+    WorkoutExercise.objects.create(workout=Workout.objects.create(user=other, started_at="2026-01-04T10:00:00Z"), exercise=bench)
+    client = APIClient()
+    client.force_authenticate(user=user)
+    rows = client.get("/api/exercises/?mine=1").json()["results"]
+    assert [(r["name"], r["times"]) for r in rows] == [("Squat", 2), ("Bench", 1)]
+    assert client.get("/api/exercises/?mine=1&search=ben").json()["results"][0]["name"] == "Bench"
