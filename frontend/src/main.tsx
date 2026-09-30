@@ -9,7 +9,7 @@ const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 declare global { interface Window { google?: { accounts: { id: { initialize: (options: { client_id: string; callback: (response: { credential: string }) => void }) => void; renderButton: (element: HTMLElement, options: Record<string, string>) => void } } } } }
 export async function api(path: string, options: RequestInit = {}) {
   const method = options.method || "GET"; let token: string | undefined;
-  if (method !== "GET") { await fetch(`${API}/csrf/`, { credentials: "include" }); token = document.cookie.split("; ").find((x) => x.startsWith("csrftoken="))?.split("=")[1]; }
+  if (method !== "GET") { const csrfResponse = await fetch(`${API}/csrf/`, { credentials: "include" }); const csrfData = await csrfResponse.json(); token = csrfData.csrfToken; }
   const response = await fetch(`${API}${path}`, { credentials: "include", headers: { "Content-Type": "application/json", ...(token ? { "X-CSRFToken": token } : {}) }, ...options });
   if (!response.ok) throw new Error((await response.json().catch(() => ({}))).detail || "No se pudo completar la operación");
   return response.status === 204 ? null : response.json();

@@ -2,6 +2,7 @@ from django.urls import path, include
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET
 from django.views.decorators.csrf import ensure_csrf_cookie
+from django.middleware.csrf import get_token
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.routers import DefaultRouter
 from users.views import AuthViewSet
@@ -20,4 +21,9 @@ router.register("body-weight", BodyWeightViewSet, basename="body-weight")
 def health(request):
     return JsonResponse({"status": "ok"})
 
-urlpatterns = [path("health/", health), path("csrf/", ensure_csrf_cookie(lambda request: JsonResponse({"status": "ok"}))), path("api/", include(router.urls)), path("api/dashboard/summary/", dashboard), path("api/progress/exercises/<uuid:exercise_id>/", exercise_progress), path("api/schema/", SpectacularAPIView.as_view()), path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"))]
+@ensure_csrf_cookie
+@require_GET
+def csrf(request):
+    return JsonResponse({"status": "ok", "csrfToken": get_token(request)})
+
+urlpatterns = [path("health/", health), path("csrf/", csrf), path("api/", include(router.urls)), path("api/dashboard/summary/", dashboard), path("api/progress/exercises/<uuid:exercise_id>/", exercise_progress), path("api/schema/", SpectacularAPIView.as_view()), path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"))]

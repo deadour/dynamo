@@ -13,6 +13,14 @@ def test_private_endpoints_require_authentication():
     assert client.get("/api/dashboard/summary/").status_code in (401, 403)
 
 
+def test_csrf_endpoint_returns_token_and_sets_cookie():
+    client = APIClient()
+    response = client.get("/csrf/")
+    assert response.status_code == 200
+    assert response.json()["csrfToken"]
+    assert "csrftoken" in response.cookies
+
+
 @pytest.mark.django_db
 def test_authenticated_user_can_filter_exercises():
     user = User.objects.create_user("filter@example.com")
