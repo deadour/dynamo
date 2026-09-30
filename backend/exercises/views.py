@@ -1,4 +1,4 @@
-from django.db.models import Count, Exists, Max, OuterRef, Q, Subquery, Value
+from django.db.models import BooleanField, Count, Exists, ExpressionWrapper, Max, OuterRef, Q, Subquery, Value
 from django.db.models.functions import Coalesce, NullIf
 import time
 
@@ -39,14 +39,21 @@ class ExerciseViewSet(viewsets.ModelViewSet):
                 muscles |= Q(primary_muscles__icontains=muscle)
             q = q.filter(muscles)
         q = q.annotate(display_name=Coalesce(NullIf("name_es", Value("")), "name"))
+        # Orden por uso real (el registro son los entrenamientos): primero lo que más hace el usuario,
+        # después lo más usado por todos, después los ejercicios comunes de gimnasio y al final el resto.
+        from workouts.models import WorkoutExercise
+        mine = WorkoutExercise.objects.filter(workout__user=self.request.user, exercise=OuterRef("pk"))
+        everyone = WorkoutExercise.objects.filter(exercise=OuterRef("pk"))
+        count_workouts = lambda rows: Coalesce(Subquery(rows.values("exercise").annotate(n=Count("workout", distinct=True)).values("n")[:1]), 0)
+        q = q.annotate(
+            times=count_workouts(mine),
+            popularity=count_workouts(everyone),
+            common=ExpressionWrapper(~Q(instructions_es=[]), output_field=BooleanField()),
+            last_done=Subquery(mine.order_by("-workout__started_at").values("workout__started_at")[:1]),
+        )
         if params.get("mine") == "1":
-            # Ejercicios que el usuario registró alguna vez, de los más hechos a los menos.
-            from workouts.models import WorkoutExercise
-            done = WorkoutExercise.objects.filter(workout__user=self.request.user, exercise=OuterRef("pk"))
-            times = done.values("exercise").annotate(n=Count("workout", distinct=True)).values("n")
-            last = done.order_by("-workout__started_at").values("workout__started_at")[:1]
-            return q.filter(Exists(done)).annotate(times=Subquery(times), last_done=Subquery(last)).order_by("-times", "-last_done", "display_name")
-        return q.order_by("display_name").distinct()
+            return q.filter(Exists(mine)).order_by("-times", "-last_done", "display_name")
+        return q.order_by("-times", "-popularity", "-common", "display_name").distinct()
     def get_serializer_class(self):
         return CustomExerciseSerializer if self.action in ("create", "update", "partial_update") else ExerciseSerializer
 

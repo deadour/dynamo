@@ -595,7 +595,7 @@ function ExerciseThumb({ src, size = 44 }: { src?: string; size?: number }) {
 function ExerciseOption({ item, onPick, action = <Plus size={16} /> }: { item: any; onPick: () => void; action?: React.ReactNode }) {
   return <button type="button" className="picker-option" onClick={onPick}>
     <ExerciseThumb src={item.image_1 || item.image} />
-    <span>{exerciseName(item)}<small>{[item.primary_muscles?.map(muscleLabel).join(", "), item.equipment ? equipmentLabel(item.equipment) : ""].filter(Boolean).join(" · ")}</small></span>
+    <span>{exerciseName(item)}<small>{[item.times > 0 ? `Lo hiciste ${item.times} ${item.times === 1 ? "vez" : "veces"}` : "", item.primary_muscles?.map(muscleLabel).join(", "), item.equipment ? equipmentLabel(item.equipment) : ""].filter(Boolean).join(" · ")}</small></span>
     {action}
   </button>;
 }

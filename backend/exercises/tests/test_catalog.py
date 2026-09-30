@@ -147,3 +147,22 @@ def test_mine_lists_logged_exercises_most_frequent_first():
     rows = client.get("/api/exercises/?mine=1").json()["results"]
     assert [(r["name"], r["times"]) for r in rows] == [("Squat", 2), ("Bench", 1)]
     assert client.get("/api/exercises/?mine=1&search=ben").json()["results"][0]["name"] == "Bench"
+
+
+@pytest.mark.django_db
+def test_suggestions_order_by_my_usage_then_everyone_then_common_gym_exercises():
+    me = User.objects.create_user("orden@example.com")
+    others = [User.objects.create_user(f"otro{i}@example.com") for i in range(3)]
+    names = {n: Exercise.objects.create(name=n, name_es=n, slug=n.lower(), primary_muscles=["chest"]) for n in ["Aaa raro", "Press banca", "Aperturas", "Fondos", "Cruce poleas"]}
+    Exercise.objects.filter(name="Cruce poleas").update(instructions_es=["Paso 1"])  # ejercicio común, sin uso todavía
+    log = lambda user, exercise, day: WorkoutExercise.objects.create(workout=Workout.objects.create(user=user, started_at=f"2026-01-{day:02d}T10:00:00Z"), exercise=names[exercise])
+    log(me, "Fondos", 1); log(me, "Fondos", 2); log(me, "Aperturas", 3)          # lo mío
+    for i, user in enumerate(others):                                              # lo de todos
+        log(user, "Press banca", 10 + i)
+    client = APIClient()
+    client.force_authenticate(user=me)
+
+    order = [r["name"] for r in client.get("/api/exercises/?muscle=chest").json()["results"]]
+
+    assert order == ["Fondos", "Aperturas", "Press banca", "Cruce poleas", "Aaa raro"]
+    assert client.get("/api/exercises/?muscle=chest").json()["results"][0]["times"] == 2
