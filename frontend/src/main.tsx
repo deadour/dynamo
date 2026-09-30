@@ -5,7 +5,9 @@ import { Activity, ArrowLeft, Camera, CalendarDays, Check, ChevronRight, Dumbbel
 import { Area, AreaChart, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import "./styles.css";
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
+// En producción, sin VITE_API_URL la API se sirve en el mismo dominio (el sitio estático reenvía /api/* al backend),
+// así la cookie de sesión es propia y los navegadores que bloquean cookies de terceros no la descartan.
+const API = import.meta.env.VITE_API_URL ?? (import.meta.env.PROD ? "" : "http://localhost:8000");
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 declare global { interface Window { google?: { accounts: { id: { initialize: (options: { client_id: string; callback: (response: { credential: string }) => void }) => void; renderButton: (element: HTMLElement, options: Record<string, string>) => void } } } } }
 export async function api(path: string, options: RequestInit = {}) {
@@ -109,7 +111,7 @@ function AuthBackground() {
 export function Login({ onLogin }: { onLogin?: (user: any) => void }) {
   const navigate = useNavigate(); const [error, setError] = useState(""); const googleButton = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<"login" | "register">("login"); const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [name, setName] = useState(""); const [busy, setBusy] = useState(false);
-  const done = (user: any) => onLogin ? onLogin(user) : navigate("/dashboard");
+  const done = (user: any) => void api("/api/auth/me/").then(() => onLogin ? onLogin(user) : navigate("/dashboard")).catch(() => setError("Iniciaste sesión, pero tu navegador bloqueó la cookie de sesión (cookies de terceros). Probá en otro navegador o permití las cookies para este sitio."));
   const submit = () => void api("/api/auth/dev_login/", { method: "POST", body: JSON.stringify({ email: "demo@dynamo.local" }) }).then(done).catch((e: Error) => setError(e.message));
   const submitForm = (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setError("");

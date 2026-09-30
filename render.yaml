@@ -32,6 +32,19 @@ services:
     env: static
     buildCommand: cd frontend && npm ci && npm run build
     staticPublishPath: frontend/dist
+    # La API se sirve desde el mismo dominio que el front: así la cookie de sesión es propia
+    # (onrender.com es un sufijo público y front/back en subdominios distintos cuentan como sitios distintos).
+    # El orden importa: primero la API, al final el fallback de la SPA.
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://dynamo-kw6c.onrender.com/api/*
+      - type: rewrite
+        source: /csrf/
+        destination: https://dynamo-kw6c.onrender.com/csrf/
+      - type: rewrite
+        source: /*
+        destination: /index.html
     envVars:
       - key: VITE_API_URL
         sync: false
