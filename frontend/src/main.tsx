@@ -15,6 +15,8 @@ export async function api(path: string, options: RequestInit = {}) {
   if (method !== "GET") { const csrfResponse = await fetch(`${API}/csrf/`, { credentials: "include" }); const csrfData = await csrfResponse.json(); token = csrfData.csrfToken; }
   const isJson = !(options.body instanceof Blob);
   const response = await fetch(`${API}${path}`, { ...options, credentials: "include", headers: { ...(isJson ? { "Content-Type": "application/json" } : {}), ...(token ? { "X-CSRFToken": token } : {}), ...(options.headers as Record<string, string> | undefined) } });
+  // Sesión vencida o cookie bloqueada: se avisa a la app para volver al login en vez de dejar pantallas vacías.
+  if ((response.status === 401 || response.status === 403) && !path.startsWith("/api/auth/") && !path.startsWith("/api/admin/")) window.dispatchEvent(new Event("dynamo:unauthorized"));
   if (!response.ok) throw new Error((await response.json().catch(() => ({}))).detail || "No se pudo completar la operación");
   return response.status === 204 ? null : response.json();
 }
@@ -152,7 +154,7 @@ export function Login({ onLogin }: { onLogin?: (user: any) => void }) {
     </div>
   </div>;
 }
-export function ProtectedRoute({ children }: { children: React.ReactNode }) { const [user, setUser] = useState<unknown>(); useEffect(() => { void api("/api/auth/me/").then(setUser).catch(() => setUser(null)); }, []); if (user === undefined) return <Loading label="Cargando Dynamo…" />; return user ? <SetUserContext.Provider value={setUser}><UserContext.Provider value={user}>{children}</UserContext.Provider></SetUserContext.Provider> : <Login onLogin={setUser} />; }
+export function ProtectedRoute({ children }: { children: React.ReactNode }) { const [user, setUser] = useState<unknown>(); useEffect(() => { void api("/api/auth/me/").then(setUser).catch(() => setUser(null)); const expire = () => setUser(null); window.addEventListener("dynamo:unauthorized", expire); return () => window.removeEventListener("dynamo:unauthorized", expire); }, []); if (user === undefined) return <Loading label="Cargando Dynamo…" />; return user ? <SetUserContext.Provider value={setUser}><UserContext.Provider value={user}>{children}</UserContext.Provider></SetUserContext.Provider> : <Login onLogin={setUser} />; }
 
 // ---------- layout ----------
 const NAV = [
@@ -176,7 +178,7 @@ function Layout({ children }: { children: React.ReactNode }) {
       <div className="header-actions">
         {user?.is_staff && <NavLink to="/admin" className="icon-btn admin-link" aria-label="Administración" title="Administración"><ShieldCheck size={18} /></NavLink>}
         <Link to="/profile" aria-label="Mi perfil"><Avatar user={user} /></Link>
-        <button className="icon-btn" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={logout}><LogOut size={18} /></button>
+        <button className="icon-btn header-logout" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={logout}><LogOut size={18} /></button>
       </div>
     </header>
     <main>{children}</main>
@@ -221,7 +223,7 @@ function Dashboard() {
 
 function Exercises() {
   const [items, setItems] = useState<any[]>([]); const [loaded, setLoaded] = useState(false); const [query, setQuery] = useState(""); const [equipment, setEquipment] = useState(""); const [difficulty, setDifficulty] = useState(""); const [group, setGroup] = useState("");
-  const load = () => { const params = new URLSearchParams({ search: query }); const muscles = GROUPS.find((g) => g.key === group)?.muscles; if (muscles) params.set("muscle", muscles.join(",")); if (equipment) params.set("equipment", equipment); if (difficulty) params.set("difficulty", difficulty); void api(`/api/exercises/?${params}`).then((d) => { setItems(d.results || d); setLoaded(true); }); };
+  const load = () => { const params = new URLSearchParams({ search: query.trim() }); const muscles = GROUPS.find((g) => g.key === group)?.muscles; if (muscles) params.set("muscle", muscles.join(",")); if (equipment) params.set("equipment", equipment); if (difficulty) params.set("difficulty", difficulty); void api(`/api/exercises/?${params}`).then((d) => { setItems(d.results || d); setLoaded(true); }); };
   useEffect(load, []);
   return <>
     <PageHead eyebrow="Catálogo" title="Ejercicios" />
@@ -260,15 +262,15 @@ function WorkoutRecorder() {
   const [blocks, setBlocks] = useState<any[]>([]); const [current, setCurrent] = useState<any>(null);
   const [suggestions, setSuggestions] = useState<any>({ frequent: [], muscles_last_trained: {} });
   const [group, setGroup] = useState(""); const [query, setQuery] = useState(""); const [options, setOptions] = useState<any[]>([]);
-  const [weight, setWeight] = useState(""); const [reps, setReps] = useState(""); const [error, setError] = useState("");
+  const [weight, setWeight] = useState(""); const [reps, setReps] = useState(""); const [error, setError] = useState(""); const [added, setAdded] = useState("");
   const elapsed = useElapsed(workout?.started_at);
   const clearActive = () => { localStorage.removeItem(ACTIVE_KEY); setWorkout(null); setBlocks([]); setCurrent(null); };
   useEffect(() => { void api("/api/exercises/suggestions/").then(setSuggestions).catch(() => undefined); }, []);
   useEffect(() => { if (workout) void api(`/api/workouts/${workout.id}/`).then((d) => setBlocks(toBlocks(d))).catch(clearActive); }, [workout?.id]);
   const groupMuscles = GROUPS.find((g) => g.key === group)?.muscles;
   useEffect(() => {
-    if (!groupMuscles && query.length < 2) { setOptions([]); return; }
-    const params = new URLSearchParams({ search: query, exclude_category: "stretching,cardio" }); if (groupMuscles) params.set("muscle", groupMuscles.join(","));
+    if (!groupMuscles && query.trim().length < 2) { setOptions([]); return; }
+    const params = new URLSearchParams({ search: query.trim(), exclude_category: "stretching,cardio" }); if (groupMuscles) params.set("muscle", groupMuscles.join(","));
     const t = setTimeout(() => void api(`/api/exercises/?${params}`).then((d) => setOptions((d.results || d).slice(0, 12))), 250); return () => clearTimeout(t);
   }, [group, query]);
   const lastByGroup = GROUPS.map((g) => { const dates = g.muscles.map((m) => suggestions.muscles_last_trained[m]).filter(Boolean).sort(); return { ...g, days: daysSince(dates[dates.length - 1]) }; });
@@ -288,6 +290,7 @@ function WorkoutRecorder() {
       const set = await api(`/api/workout-exercises/${block.weId}/sets/`, { method: "POST", body: JSON.stringify({ reps: Number(reps), weight_kg: Number(weight), set_number: block.sets.length + 1, completed: true }) });
       const updated = { ...block, sets: [...block.sets, set] };
       setBlocks((old) => old.some((b) => b.weId === updated.weId) ? old.map((b) => b.weId === updated.weId ? updated : b) : [...old, updated]);
+      setAdded(`Serie ${updated.sets.length} guardada`); setTimeout(() => setAdded(""), 2500);
     } catch (e) { setError((e as Error).message); }
   };
   const removeSet = async (block: any, setId: string) => {
@@ -326,15 +329,16 @@ function WorkoutRecorder() {
             </button>)}</div>
           </div>
           {frequent.length > 0 && <div><h3 className="block-title"><History size={15} /> Tus habituales</h3><div className="chip-row">{frequent.map((e: any) => <button type="button" key={e.id} className="pick-chip" onClick={() => pick(e)}>{exerciseName(e)}<small>{e.times}×</small></button>)}</div></div>}
-          <div className="input-icon"><Search size={16} /><input aria-label="Buscar ejercicio" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={group ? `Buscar en ${groupLabel}…` : "Buscar ejercicio"} /></div>
+          <div className="input-icon"><Search size={16} /><input aria-label="Buscar ejercicio" type="search" enterKeyHint="search" autoCapitalize="none" autoCorrect="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={group ? `Buscar en ${groupLabel}…` : "Buscar ejercicio"} /></div>
           {options.length > 0 && <div className="picker-results">{group && !query && <div className="picker-head"><Sparkles size={13} /> Sugeridos para {groupLabel}</div>}{options.map((item) => <button type="button" className="picker-option" key={item.id} onClick={() => pick(item)}><span>{exerciseName(item)}<small>{item.primary_muscles?.map(muscleLabel).join(", ")} · {equipmentLabel(item.equipment)}</small></span><Plus size={16} /></button>)}</div>}
         </>}
         <div className="grid two">
-          <label>Peso<div className="input-suffix"><input inputMode="decimal" value={weight} onChange={(e) => setWeight(e.target.value.replace(",", "."))} placeholder="0" /><span>kg</span></div></label>
-          <label>Repeticiones<div className="input-suffix"><input inputMode="numeric" value={reps} onChange={(e) => setReps(e.target.value)} placeholder="0" /><span>reps</span></div></label>
+          <label>Peso<div className="input-suffix"><input inputMode="decimal" enterKeyHint="next" value={weight} onChange={(e) => setWeight(e.target.value.replace(",", "."))} placeholder="0" /><span>kg</span></div></label>
+          <label>Repeticiones<div className="input-suffix"><input inputMode="numeric" enterKeyHint="done" value={reps} onChange={(e) => setReps(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void add()} placeholder="0" /><span>reps</span></div></label>
         </div>
+        {current && blocks.find((b) => b.exerciseId === current.id)?.sets.length > 0 && <div className="done-sets"><small>Hoy</small>{blocks.find((b) => b.exerciseId === current.id).sets.map((s: any, i: number) => <span key={s.id}><b>{i + 1}</b>{kg(s.weight_kg)}×{s.reps}</span>)}</div>}
         {error && <div className="error inline">{error}</div>}
-        <button className="btn primary wide lg" onClick={() => void add()} disabled={!current}><Plus size={18} /> Agregar serie</button>
+        <button className="btn primary wide lg" onClick={() => void add()} disabled={!current}>{added ? <><Check size={18} /> {added}</> : <><Plus size={18} /> Agregar serie</>}</button>
       </section>
       <section className="panel">
         <div className="section-head"><h3>Series de hoy</h3><span className="pill">{allSets.length}</span></div>
@@ -486,7 +490,8 @@ function Notice({ state }: { state: { ok: boolean; text: string } | null }) {
   return state.ok ? <div className="toast"><Check size={15} /> {state.text}</div> : <div className="error inline">{state.text}</div>;
 }
 function Profile() {
-  const setGlobalUser = useContext(SetUserContext);
+  const setGlobalUser = useContext(SetUserContext); const navigate = useNavigate();
+  const logout = () => void api("/api/auth/logout/", { method: "POST" }).then(() => navigate("/login"));
   const [user, setUser] = useState<any>(); const [name, setName] = useState(""); const [email, setEmail] = useState(""); const [emailPassword, setEmailPassword] = useState("");
   const [current, setCurrent] = useState(""); const [next, setNext] = useState(""); const [confirm, setConfirm] = useState("");
   const [profileMsg, setProfileMsg] = useState<{ ok: boolean; text: string } | null>(null); const [passwordMsg, setPasswordMsg] = useState<{ ok: boolean; text: string } | null>(null); const [photoBusy, setPhotoBusy] = useState(false);
@@ -524,6 +529,7 @@ function Profile() {
         </div>
         {user.created_at && <div className="member-since"><CalendarDays size={14} /> Miembro desde {new Date(user.created_at).toLocaleDateString("es-AR", { month: "long", year: "numeric" })}</div>}
         {user.is_staff && <Link to="/admin" className="btn secondary wide"><ShieldCheck size={17} /> Panel de administración</Link>}
+        <button type="button" className="btn ghost-danger wide" onClick={logout}><LogOut size={17} /> Cerrar sesión</button>
       </section>
       <div className="stack">
         <section className="panel form">

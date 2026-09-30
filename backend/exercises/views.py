@@ -14,7 +14,7 @@ class ExerciseViewSet(viewsets.ModelViewSet):
         q = Exercise.objects.filter(active=True).filter(is_custom=False) | Exercise.objects.filter(active=True, created_by=self.request.user)
         params = self.request.query_params
         if params.get("search"):
-            term = params["search"]
+            term = params["search"].strip()
             q = q.filter(Q(name__icontains=term) | Q(name_es__icontains=term))
         if params.get("category"): q = q.filter(category__iexact=params["category"])
         if params.get("exclude_category"): q = q.exclude(category__in=[c.strip() for c in params["exclude_category"].split(",")])
