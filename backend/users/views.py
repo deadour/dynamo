@@ -13,8 +13,13 @@ from .serializers import UserSerializer
 
 
 class AuthViewSet(viewsets.ViewSet):
-    @action(detail=False, methods=["get"])
+    @action(detail=False, methods=["get", "patch"])
     def me(self, request):
+        if request.method == "PATCH":
+            serializer = UserSerializer(request.user, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data)
         return Response(UserSerializer(request.user).data)
 
     @action(detail=False, methods=["post"], permission_classes=[AllowAny])

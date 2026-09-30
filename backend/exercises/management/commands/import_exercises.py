@@ -1,13 +1,72 @@
 import json
-from django.core.management.base import BaseCommand
+from urllib.request import urlopen
+
+from django.core.management.base import BaseCommand, CommandError
+from django.utils.text import slugify
+
 from exercises.models import Exercise
+from exercises.translations import spanish_exercise_name
+
+DATASET_URL = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/dist/exercises.json"
+IMAGE_BASE_URL = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/"
+
+
 class Command(BaseCommand):
-    help="Importa ejercicios desde un JSON compatible con free-exercise-db"
-    def add_arguments(self,parser): parser.add_argument("--file",default="")
-    def handle(self,*args,**opts):
-        if not opts["file"]: self.stdout.write(self.style.WARNING("Usá --file dataset.json; no se descarga contenido remoto automáticamente.")); return
-        data=json.load(open(opts["file"],encoding="utf8")); created=updated=skipped=0
+    help = "Importa ejercicios desde free-exercise-db o un JSON compatible"
+
+    def add_arguments(self, parser):
+        parser.add_argument("--file", default="", help="JSON local compatible con free-exercise-db")
+        parser.add_argument("--url", default=DATASET_URL, help="URL del JSON del dataset")
+
+    def _load(self, file_path, url):
+        if file_path:
+            with open(file_path, encoding="utf-8") as source:
+                return json.load(source)
+        with urlopen(url, timeout=30) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    @staticmethod
+    def _image_url(value):
+        if not value:
+            return ""
+        if value.startswith(("http://", "https://")):
+            return value
+        return IMAGE_BASE_URL + value.lstrip("/")
+
+    def handle(self, *args, **opts):
+        try:
+            data = self._load(opts["file"], opts["url"])
+        except (OSError, ValueError) as exc:
+            raise CommandError(f"No se pudo leer el dataset: {exc}") from exc
+
+        created = updated = skipped = errors = 0
         for row in data:
-            if not row.get("id") or not row.get("name"): skipped+=1; continue
-            obj, made=Exercise.objects.update_or_create(external_id=row["id"],defaults={"name":row["name"],"slug":row["name"].lower().replace(" ","-"),"category":row.get("category", ""),"primary_muscles":row.get("primaryMuscles",[]),"secondary_muscles":row.get("secondaryMuscles",[]),"equipment":row.get("equipment", ""),"instructions":row.get("instructions",[]),"image_1":row.get("images",[""])[0] if row.get("images") else "","image_2":row.get("images",["",""])[1] if len(row.get("images",[]))>1 else "","source":"free-exercise-db","source_url":"https://github.com/yuhonas/free-exercise-db"}); created+=made; updated+=not made
-        self.stdout.write(f"creados={created} actualizados={updated} omitidos={skipped}")
+            external_id = row.get("id")
+            name = row.get("name")
+            if not external_id or not name:
+                skipped += 1
+                continue
+            try:
+                images = row.get("images") or []
+                defaults = {
+                    "name": name,
+                    "name_es": spanish_exercise_name(name),
+                    "slug": slugify(name),
+                    "category": row.get("category") or "",
+                    "primary_muscles": row.get("primaryMuscles") or [],
+                    "secondary_muscles": row.get("secondaryMuscles") or [],
+                    "equipment": row.get("equipment") or "",
+                    "difficulty": row.get("level") or "",
+                    "instructions": row.get("instructions") or [],
+                    "image_1": self._image_url(images[0]) if images else "",
+                    "image_2": self._image_url(images[1]) if len(images) > 1 else "",
+                    "source": "free-exercise-db",
+                    "source_url": "https://github.com/yuhonas/free-exercise-db",
+                }
+                _, made = Exercise.objects.update_or_create(external_id=external_id, defaults=defaults)
+                created += int(made)
+                updated += int(not made)
+            except Exception as exc:  # pragma: no cover - protects long imports from one bad row
+                errors += 1
+                self.stderr.write(f"error={external_id}: {exc}")
+        self.stdout.write(f"creados={created} actualizados={updated} omitidos={skipped} errores={errors}")

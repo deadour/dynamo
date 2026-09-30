@@ -1,3 +1,4 @@
+from django.db.models import Q
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 from .models import Exercise
@@ -9,7 +10,9 @@ class ExerciseViewSet(viewsets.ModelViewSet):
             return Exercise.objects.none()
         q = Exercise.objects.filter(active=True).filter(is_custom=False) | Exercise.objects.filter(active=True, created_by=self.request.user)
         params = self.request.query_params
-        if params.get("search"): q = q.filter(name__icontains=params["search"])
+        if params.get("search"):
+            term = params["search"]
+            q = q.filter(Q(name__icontains=term) | Q(name_es__icontains=term))
         if params.get("category"): q = q.filter(category__iexact=params["category"])
         if params.get("equipment"): q = q.filter(equipment__iexact=params["equipment"])
         return q.order_by("name").distinct()
