@@ -49,3 +49,25 @@ def test_suggestions_include_recent_exercises_newest_first(setup):
     WorkoutExercise.objects.create(workout=Workout.objects.create(user=user, started_at="2026-01-01T10:00:00Z"), exercise=bench)
     WorkoutExercise.objects.create(workout=Workout.objects.create(user=user, started_at="2026-01-05T10:00:00Z"), exercise=row)
     assert [e["name"] for e in client.get("/api/exercises/suggestions/").json()["recent"]] == ["Barbell Row", "Bench Press"]
+
+
+@pytest.mark.django_db
+def test_routine_can_be_shared_publicly_and_imported(setup):
+    user, client, bench, row = setup
+    created = client.post("/api/routines/", {"name": "Full body", "items": [{"exercise": str(bench.id), "target_sets": 3, "target_reps": "8-10"}, {"exercise": str(row.id)}]}, format="json").json()
+    shared = client.post(f"/api/routines/{created['id']}/share/")
+    assert shared.status_code == 200
+    token = shared.json()["token"]
+
+    public = APIClient()
+    preview = public.get(f"/api/shared-routines/{token}/")
+    assert preview.status_code == 200
+    assert preview.json()["name"] == "Full body"
+    assert preview.json()["owner_name"] == "Usuario de Dynamo"
+
+    other = User.objects.create_user("copiador@example.com")
+    public.force_authenticate(user=other)
+    imported = public.post(f"/api/shared-routines/{token}/import/")
+    assert imported.status_code == 201
+    assert imported.json()["name"] == "Copia de Full body"
+    assert len(imported.json()["items"]) == 2

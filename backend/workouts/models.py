@@ -19,6 +19,7 @@ class Routine(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="routines")
     name = models.CharField(max_length=120)
     notes = models.TextField(blank=True)
+    share_token = models.UUIDField(null=True, blank=True, unique=True, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

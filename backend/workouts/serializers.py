@@ -67,3 +67,16 @@ class RoutineSerializer(serializers.ModelSerializer):
         if items is not None:
             self._save_items(instance, items)
         return instance
+
+
+class SharedRoutineSerializer(serializers.ModelSerializer):
+    """Vista pública de una rutina: nunca expone email ni datos privados."""
+    items = RoutineItemSerializer(many=True, read_only=True)
+    owner_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Routine
+        fields = ["id", "name", "notes", "items", "owner_name"]
+
+    def get_owner_name(self, obj):
+        return obj.user.name or "Usuario de Dynamo"

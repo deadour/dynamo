@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Activity, ArrowLeft, Camera, CalendarDays, Check, ChevronDown, ChevronRight, ChevronUp, Dumbbell, Flame, History, Home, ListChecks, LogOut, Pencil, Plus, Save, Scale, Search, ShieldCheck, SlidersHorizontal, Sparkles, Timer, Trash2, TrendingDown, TrendingUp, Trophy, UserRound, Users, X } from "lucide-react";
+import { Activity, ArrowLeft, Camera, CalendarDays, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Dumbbell, Flame, History, Home, ListChecks, LogOut, Pencil, Plus, Save, Scale, Search, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Timer, Trash2, TrendingDown, TrendingUp, Trophy, UserRound, Users, X } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import "./styles.css";
 
@@ -124,9 +124,9 @@ function AuthBackground() {
   </div>;
 }
 export function Login({ onLogin }: { onLogin?: (user: any) => void }) {
-  const navigate = useNavigate(); const [error, setError] = useState(""); const googleButton = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate(); const [searchParams] = useSearchParams(); const next = searchParams.get("next"); const [error, setError] = useState(""); const googleButton = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<"login" | "register">("login"); const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [name, setName] = useState(""); const [busy, setBusy] = useState(false);
-  const done = (user: any) => void api("/api/auth/me/").then(() => onLogin ? onLogin(user) : navigate("/inicio")).catch(() => setError("No pudimos mantener la sesión iniciada. Probá de nuevo."));
+  const done = (user: any) => void api("/api/auth/me/").then(() => { onLogin?.(user); navigate(next || "/inicio"); }).catch(() => setError("No pudimos mantener la sesión iniciada. Probá de nuevo."));
   const submit = () => void api("/api/auth/dev_login/", { method: "POST", body: JSON.stringify({ email: "demo@dynamo.local" }) }).then(done).catch((e: Error) => setError(e.message));
   const submitForm = (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setError("");
@@ -236,11 +236,22 @@ function Dashboard() {
 }
 
 function Exercises() {
-  const [items, setItems] = useState<any[]>([]); const [loaded, setLoaded] = useState(false); const [query, setQuery] = useState(""); const [equipment, setEquipment] = useState(""); const [difficulty, setDifficulty] = useState(""); const [group, setGroup] = useState("");
+  const [items, setItems] = useState<any[]>([]); const [loaded, setLoaded] = useState(false); const [query, setQuery] = useState(""); const [equipment, setEquipment] = useState(""); const [difficulty, setDifficulty] = useState(""); const [group, setGroup] = useState(""); const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState({ name: "", name_es: "", muscle: "", equipment: "", difficulty: "beginner", image: "", instructions: "" }); const [saving, setSaving] = useState(false); const [formError, setFormError] = useState("");
   const load = () => { const params = new URLSearchParams({ search: query.trim() }); const muscles = GROUPS.find((g) => g.key === group)?.muscles; if (muscles) params.set("muscle", muscles.join(",")); if (equipment) params.set("equipment", equipment); if (difficulty) params.set("difficulty", difficulty); void api(`/api/exercises/?${params}`).then((d) => { setItems(d.results || d); setLoaded(true); }); };
   useEffect(load, []);
+  const updateForm = (key: string, value: string) => setForm((old) => ({ ...old, [key]: value }));
+  const saveCustom = () => {
+    if (!form.name.trim()) return setFormError("Poné un nombre para el ejercicio.");
+    setSaving(true); setFormError("");
+    const slug = form.name.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const instructions = form.instructions.split("\n").map((line) => line.trim()).filter(Boolean);
+    const body = { name: form.name.trim(), name_es: (form.name_es || form.name).trim(), slug: slug || `ejercicio-${Date.now()}`, category: "strength", primary_muscles: form.muscle ? [form.muscle] : [], equipment: form.equipment, difficulty: form.difficulty, instructions, instructions_es: instructions, image_1: form.image.trim() };
+    void api("/api/exercises/", { method: "POST", body: JSON.stringify(body) }).then((item) => { setItems((old) => [item, ...old]); setForm({ name: "", name_es: "", muscle: "", equipment: "", difficulty: "beginner", image: "", instructions: "" }); setCreating(false); }).catch((e: Error) => setFormError(e.message)).finally(() => setSaving(false));
+  };
   return <>
-    <PageHead eyebrow="Catálogo" title="Ejercicios" />
+    <PageHead eyebrow="Catálogo" title="Ejercicios" action={<button className="btn primary" onClick={() => { setCreating((old) => !old); setFormError(""); }}><Plus size={17} /> {creating ? "Cerrar" : "Crear ejercicio"}</button>} />
+    {creating && <section className="panel custom-exercise-form"><div><small>Ejercicio personalizado</small><h3>Agregá uno que no está en el catálogo</h3><p className="hint">Solo vos vas a poder verlo y usarlo.</p></div><div className="grid two"><label>Nombre<input value={form.name} onChange={(e) => updateForm("name", e.target.value)} placeholder="Ej: Press unilateral en polea" /></label><label>Nombre corto<input value={form.name_es} onChange={(e) => updateForm("name_es", e.target.value)} placeholder="Se muestra en la app" /></label><label>Músculo principal<select value={form.muscle} onChange={(e) => updateForm("muscle", e.target.value)}><option value="">Elegí uno</option>{Object.entries(MUSCLES).map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select></label><label>Equipamiento<select value={form.equipment} onChange={(e) => updateForm("equipment", e.target.value)}><option value="">Sin equipamiento</option>{Object.entries(EQUIPMENT).map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select></label><label>Dificultad<select value={form.difficulty} onChange={(e) => updateForm("difficulty", e.target.value)}><option value="beginner">Principiante</option><option value="intermediate">Intermedio</option><option value="advanced">Avanzado</option></select></label><label>URL de foto<input type="url" value={form.image} onChange={(e) => updateForm("image", e.target.value)} placeholder="Opcional, por ahora" /></label></div><label>Instrucciones<textarea rows={4} value={form.instructions} onChange={(e) => updateForm("instructions", e.target.value)} placeholder="Una indicación por línea" /></label>{formError && <div className="error inline">{formError}</div>}<button className="btn primary" onClick={saveCustom} disabled={saving}><Save size={17} /> {saving ? "Guardando…" : "Guardar ejercicio"}</button></section>}
     <div className="toolbar">
       <div className="search"><Search size={18} /><input aria-label="Buscar ejercicio" placeholder="Buscar por nombre…" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && load()} /></div>
       <div className="filters">
@@ -427,14 +438,22 @@ function WorkoutRecorder() {
 }
 
 function Routines() {
-  const navigate = useNavigate(); const [rows, setRows] = useState<any[]>([]); const [loaded, setLoaded] = useState(false);
+  const navigate = useNavigate(); const [rows, setRows] = useState<any[]>([]); const [loaded, setLoaded] = useState(false); const [shareUrl, setShareUrl] = useState(""); const [shareName, setShareName] = useState(""); const [shareBusy, setShareBusy] = useState(false); const [copied, setCopied] = useState(false); const [shareError, setShareError] = useState("");
   useEffect(() => { void api("/api/routines/").then((d) => { setRows(d.results || d); setLoaded(true); }); }, []);
+  const share = async (routine: any) => {
+    setShareBusy(true); setCopied(false); setShareError("");
+    try { const data = await api(`/api/routines/${routine.id}/share/`, { method: "POST" }); setShareUrl(`${window.location.origin}/rutina-compartida/${data.token}`); setShareName(routine.name); }
+    catch (e) { setShareError(e instanceof Error ? e.message : "No se pudo generar el enlace."); }
+    finally { setShareBusy(false); }
+  };
+  const copy = async () => { if (!navigator.clipboard) return; await navigator.clipboard.writeText(shareUrl); setCopied(true); };
   return <>
     <PageHead eyebrow="Entrenar" title="Rutinas" action={<Link className="btn primary" to="/rutina?id=nueva"><Plus size={18} /> Nueva</Link>} />
+    {(shareUrl || shareError) && <section className="panel share-box">{shareError ? <div className="error inline">{shareError}</div> : <><div><small>Compartir rutina</small><h3>{shareName}</h3><p className="hint">Cualquiera con este enlace puede verla y guardarla en su cuenta.</p></div><input readOnly value={shareUrl} onFocus={(e) => e.currentTarget.select()} /><div className="share-actions"><button className="btn secondary" onClick={copy}><Copy size={16} /> {copied ? "Copiado" : "Copiar enlace"}</button><a className="btn primary" href={`https://wa.me/?text=${encodeURIComponent(`Te comparto mi rutina de Dynamo: ${shareUrl}`)}`} target="_blank" rel="noreferrer"><Share2 size={16} /> WhatsApp</a></div></>}</section>}
     {rows.length ? <div className="routine-grid">{rows.map((r) => <section className="panel routine-card" key={r.id}>
       <div className="section-head"><h3>{r.name}</h3><span className="pill">{r.items.length}</span></div>
       <div className="routine-preview">{r.items.slice(0, 5).map((it: any) => <span key={it.id}><ExerciseThumb src={it.image} size={30} />{it.exercise_name}</span>)}{r.items.length > 5 && <small>+{r.items.length - 5} más</small>}</div>
-      <div className="routine-actions"><Link className="btn secondary" to={`/rutina?id=${r.id}`}><Pencil size={15} /> Editar</Link><button className="btn primary" disabled={!r.items.length} onClick={() => navigate("/entrenar", { state: { routine: r } })}><Dumbbell size={16} /> Empezar</button></div>
+      <div className="routine-actions"><Link className="btn secondary" to={`/rutina?id=${r.id}`}><Pencil size={15} /> Editar</Link><button className="btn secondary" disabled={!r.items.length || shareBusy} onClick={() => void share(r)}><Share2 size={15} /> Compartir</button><button className="btn primary" disabled={!r.items.length} onClick={() => navigate("/entrenar", { state: { routine: r } })}><Dumbbell size={16} /> Empezar</button></div>
     </section>)}</div> : loaded && <section className="panel"><Empty icon={<ListChecks />} title="Todavía no tenés rutinas">Por ejemplo "Pecho y tríceps" o "Piernas". Después entrenás siguiendo esa lista.<Link to="/rutina?id=nueva" className="btn ghost"><Plus size={16} /> Crear mi primera rutina</Link></Empty></section>}
   </>;
 }
@@ -766,10 +785,19 @@ function AdminUserDetail() {
   </>;
 }
 
+function SharedRoutine() {
+  const { token = "" } = useParams(); const navigate = useNavigate(); const [routine, setRoutine] = useState<any>(); const [user, setUser] = useState<any>(); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
+  useEffect(() => { void api(`/api/shared-routines/${token}/`).then(setRoutine).catch((e: Error) => setError(e.message)); void api("/api/auth/me/").then(setUser).catch(() => setUser(null)); }, [token]);
+  const importRoutine = () => { setBusy(true); setError(""); void api(`/api/shared-routines/${token}/import/`, { method: "POST" }).then(() => navigate("/rutinas")).catch((e: Error) => setError(e.message)).finally(() => setBusy(false)); };
+  if (error) return <div className="shared-routine-page"><section className="panel shared-card"><h1>No encontramos esa rutina</h1><p className="hint">El enlace puede estar vencido o ser incorrecto.</p><Link className="btn primary" to="/inicio">Ir a Dynamo</Link></section></div>;
+  if (!routine) return <Loading label="Cargando rutina…" />;
+  return <div className="shared-routine-page"><section className="panel shared-card"><small>Rutina compartida</small><h1>{routine.name}</h1><p className="hint">Creada por {routine.owner_name}. Podés verla y guardarla en tu cuenta para empezar a entrenar.</p><div className="routine-items">{routine.items.map((it: any) => <div className="routine-item" key={it.id}><ExerciseThumb src={it.image} size={42} /><div className="routine-item-main"><b>{it.exercise_name}</b><small>{it.target_sets || "—"} series · {it.target_reps || "Repeticiones libres"}</small></div></div>)}</div>{error && <div className="error inline">{error}</div>}{user ? <button className="btn primary wide lg" onClick={importRoutine} disabled={busy}>{busy ? "Guardando…" : "Guardar en mis rutinas"}</button> : <Link className="btn primary wide lg" to={`/ingresar?next=${encodeURIComponent(`/rutina-compartida/${token}`)}`}>Ingresar para usar esta rutina</Link>}<Link className="shared-back" to="/inicio">Dynamo</Link></section></div>;
+}
 function LegacyRedirect({ to }: { to: string }) { const { id } = useParams(); return <Navigate replace to={id ? `${to}?id=${id}` : to} />; }
 function App() {
   return <Routes>
     <Route path="/ingresar" element={<Login />} />
+    <Route path="/rutina-compartida/:token" element={<SharedRoutine />} />
     <Route path="/login" element={<Navigate replace to="/ingresar" />} />
     <Route path="*" element={<ProtectedRoute><Layout><Routes>
       <Route path="/inicio" element={<Dashboard />} />

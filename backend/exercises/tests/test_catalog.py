@@ -63,3 +63,18 @@ def test_import_stores_spanish_names_instructions_and_details(tmp_path):
     assert (exercise.force, exercise.mechanic) == ("pull", "isolation")
     assert exercise.instructions_es[0].startswith("Parate derecho")
     assert exercise.image_2.endswith("Barbell_Curl/1.jpg")
+
+
+@pytest.mark.django_db
+def test_user_can_create_a_private_custom_exercise():
+    user = User.objects.create_user("custom@example.com")
+    other = User.objects.create_user("other-custom@example.com")
+    client = APIClient()
+    client.force_authenticate(user=user)
+    response = client.post("/api/exercises/", {"name": "Press unilateral", "name_es": "Press unilateral", "primary_muscles": ["chest"], "equipment": "cable", "instructions_es": ["Empujá de forma controlada."]}, format="json")
+    assert response.status_code == 201
+    exercise = Exercise.objects.get(name="Press unilateral")
+    assert exercise.is_custom is True and exercise.created_by_id == user.id
+    other_client = APIClient()
+    other_client.force_authenticate(user=other)
+    assert other_client.get(f"/api/exercises/{exercise.id}/").status_code == 404

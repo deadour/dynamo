@@ -1,10 +1,14 @@
+import uuid
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.db.models import Q
+from django.db import transaction
 from rest_framework import viewsets, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from .models import Routine, Workout, WorkoutExercise, WorkoutSet
-from .serializers import RoutineSerializer, WorkoutSerializer, WorkoutExerciseSerializer, SetSerializer
+from .models import Routine, RoutineExercise, Workout, WorkoutExercise, WorkoutSet
+from .serializers import RoutineSerializer, SharedRoutineSerializer, WorkoutSerializer, WorkoutExerciseSerializer, SetSerializer
 class WorkoutViewSet(viewsets.ModelViewSet):
     serializer_class=WorkoutSerializer
     def get_queryset(self):
@@ -61,3 +65,48 @@ class RoutineViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+    @action(detail=True, methods=["post"], url_path="share")
+    def share(self, request, pk=None):
+        routine = self.get_object()
+        if routine.share_token is None:
+            routine.share_token = uuid.uuid4()
+            routine.save(update_fields=["share_token"])
+        return Response({"token": str(routine.share_token)})
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def shared_routine(request, token):
+    routine = get_object_or_404(
+        Routine.objects.prefetch_related("items__exercise").select_related("user"),
+        share_token=token,
+    )
+    return Response(SharedRoutineSerializer(routine).data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def import_shared_routine(request, token):
+    source = get_object_or_404(
+        Routine.objects.prefetch_related("items__exercise"),
+        share_token=token,
+    )
+    with transaction.atomic():
+        routine = Routine.objects.create(
+            user=request.user,
+            name=f"Copia de {source.name}"[:120],
+            notes=source.notes,
+        )
+        RoutineExercise.objects.bulk_create([
+            RoutineExercise(
+                routine=routine,
+                exercise=item.exercise,
+                order=item.order,
+                target_sets=item.target_sets,
+                target_reps=item.target_reps,
+            )
+            for item in source.items.all()
+        ])
+    routine = Routine.objects.prefetch_related("items__exercise").get(pk=routine.pk)
+    return Response(RoutineSerializer(routine, context={"request": request}).data, status=status.HTTP_201_CREATED)
