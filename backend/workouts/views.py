@@ -140,7 +140,7 @@ def import_shared_routine(request, token):
 def copy_routine(source, user, name):
     """Copia una rutina ajena a la cuenta de `user` (los ejercicios propios privados también se copian)."""
     with transaction.atomic():
-        routine = Routine.objects.create(user=user, name=name[:120], notes=source.notes)
+        routine = Routine.objects.create(user=user, name=name[:120], notes=source.notes, source=source)
         RoutineExercise.objects.bulk_create([
             RoutineExercise(routine=routine, exercise=_usable_exercise(item.exercise, user), order=item.order,
                             target_sets=item.target_sets, target_reps=item.target_reps)

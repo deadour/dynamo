@@ -96,26 +96,28 @@ main { max-width: 1040px; margin: 0 auto; padding: 36px 20px 120px; animation: r
 @keyframes sheet-up { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
-/* Barra inferior clásica (como Instagram): pegada al borde, de lado a lado, sin nada que sobresalga.
-   El contenido reserva exactamente su alto (--nav-h + zona segura), así nunca tapa nada. */
-:root { --nav-h: 58px; }
+/* Pie de página fijo, pegado al borde de abajo de lado a lado.
+   En celular el documento NO scrollea: scrollea .app-scroll (una capa fija a pantalla completa). Así Safari/iOS
+   nunca achica su barra de direcciones y la barra de abajo no puede quedar "flotando" en el medio al scrollear. */
+:root { --nav-h: 60px; --nav-space: calc(var(--nav-h) + env(safe-area-inset-bottom)); }
 .bottom-nav {
-  -webkit-transform: translate3d(0, 0, 0); transform: translate3d(0, 0, 0); -webkit-backface-visibility: hidden; backface-visibility: hidden;
+  -webkit-transform: translate3d(0, 0, 0); transform: translate3d(0, 0, 0);
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
   display: none; align-items: stretch;
-  height: calc(var(--nav-h) + env(safe-area-inset-bottom));
+  height: var(--nav-space);
   padding: 0 4px env(safe-area-inset-bottom);
-  background: rgba(10, 13, 18, .97);
+  background: rgba(10, 13, 18, .92);
+  -webkit-backdrop-filter: saturate(160%) blur(16px); backdrop-filter: saturate(160%) blur(16px);
   border-top: 1px solid var(--border);
 }
 .bottom-nav a { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--faint); font-size: 10.5px; font-weight: 600; transition: color .15s; }
-.bottom-nav .nav-icon { display: grid; place-items: center; width: 44px; height: 28px; border-radius: 10px; transition: background .15s, transform .15s; }
+.bottom-nav .nav-icon { display: grid; place-items: center; width: 44px; height: 30px; border-radius: 10px; transition: background .15s, transform .15s; }
 .bottom-nav a:active .nav-icon { transform: scale(.9); }
 .bottom-nav a.active { color: var(--accent); }
 .bottom-nav a.active .nav-icon { background: var(--accent-soft); }
-.bottom-nav a.main .nav-icon { background: var(--accent); color: var(--accent-ink); }
-.bottom-nav a.main { color: var(--text); }
-.bottom-nav a.main.active .nav-icon { box-shadow: 0 0 0 3px var(--accent-soft); }
+.bottom-nav a.main .nav-icon { width: 48px; border-radius: 12px; background: linear-gradient(145deg, #d4ff8f, var(--accent)); color: var(--accent-ink); box-shadow: 0 6px 16px -6px rgba(182, 243, 106, .6); }
+.bottom-nav a.main { color: var(--muted); }
+.bottom-nav a.main.active { color: var(--accent); }
 
 /* ---------- encabezados ---------- */
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
@@ -715,7 +717,26 @@ input[type="date"]::-webkit-datetime-edit { padding: 0; }
 .friend-routine .row-main small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .user-hero { display: grid; justify-items: center; gap: 16px; text-align: center; }
 .user-counts { display: flex; gap: 28px; }
-.user-counts span { display: grid; gap: 2px; color: var(--muted); font-size: 12px; }
+.user-counts span, .user-counts button { display: grid; gap: 2px; justify-items: center; color: var(--muted); font-size: 12px; }
+.user-counts button { padding: 0; border: 0; background: none; cursor: pointer; font: inherit; font-size: 12px; transition: color .15s, transform .15s; }
+.user-counts button:hover { color: var(--text); }
+.user-counts button:active { transform: scale(.95); }
+.profile-card .user-counts { justify-content: center; margin: 2px 0 4px; }
+.profile-card .user-counts b { font-size: 19px; }
+.post-follow { margin-left: auto; padding: 6px 12px; font-size: 12.5px; }
+.post-head .post-follow + .confirm-btn, .post-head .post-follow ~ * { margin-left: 8px; }
+.friend-routine-wrap { border-radius: 14px; transition: background .2s; }
+.friend-routine-wrap.open { background: var(--surface-2, rgba(255, 255, 255, .03)); }
+.fr-toggle { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+.fr-toggle .chev { transition: transform .2s; flex: none; }
+.friend-routine-wrap.open .fr-toggle .chev { transform: rotate(180deg); }
+.fr-items { display: grid; gap: 4px; padding: 0 8px 10px; animation: rise .25s ease both; }
+.fr-item { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 12px; transition: background .15s; }
+.fr-item:hover { background: var(--surface-3); }
+.fr-num { width: 18px; text-align: center; color: var(--faint); font-family: var(--display); font-size: 13px; flex: none; }
+.fr-item .row-main { flex: 1; min-width: 0; font-size: 14px; }
+.fr-item .row-main small { display: block; color: var(--muted); font-size: 12px; font-weight: 400; }
+.fr-toggle .row-main { flex: 1; min-width: 0; }
 .user-counts b { font-family: var(--display); font-size: 22px; color: var(--text); }
 .user-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .versus { display: grid; gap: 18px; }
@@ -811,11 +832,12 @@ input[type="date"]::-webkit-datetime-edit { padding: 0; }
   .auth-hero { display: none; }
   .auth-mobile-brand { display: block; }
   .bottom-nav { display: flex; }
+  .app-scroll { position: fixed; inset: 0; overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
   .recorder, .weight-top, .profile-grid, .exercise-detail, .start-grid { grid-template-columns: 1fr; }
   .exercise-hero { min-height: 240px; }
 }
 @media (max-width: 650px) {
-  main { padding: 24px 16px calc(var(--nav-h) + env(safe-area-inset-bottom) + 28px); }
+  main { padding: 24px 16px calc(var(--nav-space) + 24px); }
   h1 { font-size: 27px; }
   .page-head { margin-bottom: 22px; }
   .page-head .btn { padding: 10px 14px; }
@@ -869,13 +891,13 @@ input[type="date"]::-webkit-datetime-edit { padding: 0; }
   .brand .wordmark { height: 20px !important; }
   .bottom-nav { transition: transform .25s ease; }
 
-  body:has(input:focus, select:focus, textarea:focus) .bottom-nav { transform: translate3d(0, 100%, 0); }
+  body:has(input:focus, select:focus, textarea:focus) .bottom-nav, body:has(.sheet-backdrop) .bottom-nav { transform: translate3d(0, 100%, 0); }
   .page-head { flex-wrap: wrap; }
   .page-head h1 { word-break: break-word; }
   .chip-row { flex-wrap: nowrap; overflow-x: auto; margin: 0 -16px; padding: 2px 16px 6px; scrollbar-width: none; scroll-snap-type: x proximity; }
   .chip-row::-webkit-scrollbar { display: none; }
   .chip-row > * { flex: none; scroll-snap-align: start; }
-  .recorder .btn.lg { position: sticky; bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 10px); z-index: 2; box-shadow: 0 -6px 18px -6px var(--bg), 0 8px 22px -10px rgba(182, 243, 106, .7); }
+  .recorder .btn.lg { position: sticky; bottom: calc(var(--nav-space) + 10px); z-index: 2; box-shadow: 0 -6px 18px -6px var(--bg), 0 8px 22px -10px rgba(182, 243, 106, .7); }
   body:has(input:focus) .recorder .btn.lg { bottom: 12px; }
   .set-line { gap: 10px; padding: 6px 6px 6px 10px; }
   .weight-row .chip { display: none; }

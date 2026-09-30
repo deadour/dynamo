@@ -51,8 +51,8 @@ class PostViewSet(viewsets.ModelViewSet):
         qs = visible_posts(user)
         author_id = self.request.query_params.get("user")
         if self.action == "list":
-            # Feed: lo mío + la gente que sigo. En un perfil: solo las publicaciones de esa persona.
-            qs = qs.filter(user_id=author_id) if author_id else qs.filter(Q(user=user) | Q(user_id__in=following_ids(user)))
+            # Feed: lo mío + la gente que sigo + lo público de cualquiera. En un perfil: solo las publicaciones de esa persona.
+            qs = qs.filter(user_id=author_id) if author_id else qs.filter(Q(user=user) | Q(user_id__in=following_ids(user)) | Q(visibility="public"))
         return (qs.select_related("user", "achievement", "workout")
                 .prefetch_related("workout__exercises__sets", "workout__exercises__exercise")
                 .annotate(like_total=Count("likes", distinct=True), comment_total=Count("comments", distinct=True),
@@ -60,7 +60,10 @@ class PostViewSet(viewsets.ModelViewSet):
                 .order_by("-created_at"))
 
     def get_serializer_context(self):
-        return {**super().get_serializer_context(), "with_photo": self.request.query_params.get("with_photo") == "1"}
+        context = {**super().get_serializer_context(), "with_photo": self.request.query_params.get("with_photo") == "1"}
+        if self.request.user.is_authenticated:
+            context["following"] = following_ids(self.request.user)
+        return context
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -158,6 +161,16 @@ class ProfileViewSet(viewsets.ReadOnlyModelViewSet):
         following, followers = self._relations()
         tab = request.query_params.get("tab", "")
         term = request.query_params.get("search", "").strip()
+        of = request.query_params.get("user")
+        if of and tab in ("followers", "following") and not term:
+            # Seguidores / seguidos de cualquier persona (se ven desde su perfil).
+            person = get_object_or_404(self.get_queryset(), pk=of)
+            ids = (Follow.objects.filter(following=person).values_list("follower_id", flat=True) if tab == "followers"
+                   else Follow.objects.filter(follower=person).values_list("following_id", flat=True))
+            people = self.get_queryset().filter(id__in=list(ids)).order_by("name")
+            return Response([{**profile_row(p, me, following, followers), "is_me": p.id == me.id} for p in people])
+        if tab == "suggested" and not term:
+            return Response(self._suggested(me, following, followers))
         if term:
             if len(term) < 2:
                 return Response([])
@@ -169,6 +182,39 @@ class ProfileViewSet(viewsets.ReadOnlyModelViewSet):
         else:  # amigos
             people = self.get_queryset().filter(id__in=following & followers)
         return Response([profile_row(p, me, following, followers) for p in (people if term else people.order_by("name"))])
+
+    def _suggested(self, me, following, followers, limit=12):
+        """Gente para seguir sin buscar: los que siguen las personas que sigo (más conexiones en común primero),
+        los que me siguen y no sigo, y si falta, gente que entrena seguido."""
+        skip = following | {me.id}
+        names = {pk: display_name(u) for pk, u in ((u.id, u) for u in self.get_queryset().filter(id__in=following))}
+        via, score = {}, {}
+        for follower_id, target_id in Follow.objects.filter(follower_id__in=following).exclude(following_id__in=skip).values_list("follower_id", "following_id"):
+            score[target_id] = score.get(target_id, 0) + 1
+            via.setdefault(target_id, follower_id)
+        ranked = sorted(score, key=lambda pk: -score[pk])
+        ranked += [pk for pk in followers if pk not in skip and pk not in score]
+        if len(ranked) < limit:
+            since = timezone.now() - timedelta(days=30)
+            active = (self.get_queryset().exclude(id__in=skip | set(ranked))
+                      .annotate(n=Count("workouts", filter=Q(workouts__started_at__gte=since))).filter(n__gt=0).order_by("-n")
+                      .values_list("id", flat=True)[: limit - len(ranked)])
+            ranked += list(active)
+        ranked = ranked[:limit]
+        people = {p.id: p for p in self.get_queryset().filter(id__in=ranked)}
+        rows = []
+        for pk in ranked:
+            if pk not in people:
+                continue
+            row = profile_row(people[pk], me, following, followers)
+            if pk in score:
+                row["reason"] = f"Lo sigue {names.get(via[pk], 'alguien que seguís')}" + (f" y {score[pk] - 1} más" if score[pk] > 1 else "")
+            elif pk in followers:
+                row["reason"] = "Te sigue"
+            else:
+                row["reason"] = "Entrena seguido"
+            rows.append(row)
+        return rows
 
     def retrieve(self, request, id=None):
         me = request.user
@@ -189,17 +235,27 @@ class ProfileViewSet(viewsets.ReadOnlyModelViewSet):
             workouts = Workout.objects.filter(user=person).prefetch_related("exercises__sets", "exercises__exercise")[:5]
             row["recent_workouts"] = [workout_summary(w) for w in workouts]
             routines = Routine.objects.filter(user=person).prefetch_related("items__exercise")
+            saved = {} if row["is_me"] else dict(Routine.objects.filter(user=me, source__user=person).values_list("source_id", "id"))
             row["routines"] = [{
-                "id": str(r.id), "name": r.name, "exercise_count": len(r.items.all()),
+                "id": str(r.id), "name": r.name, "notes": r.notes, "exercise_count": len(r.items.all()),
                 "exercises": [i.exercise.name_es or i.exercise.name for i in list(r.items.all())[:4]],
                 "images": [i.exercise.image_1 for i in r.items.all() if i.exercise.image_1][:3],
+                "items": [{"exercise": str(i.exercise_id), "name": i.exercise.name_es or i.exercise.name, "image": i.exercise.image_1,
+                           "target_sets": i.target_sets, "target_reps": i.target_reps} for i in r.items.all()],
+                "saved_id": str(saved[r.id]) if r.id in saved else None,
             } for r in routines if r.items.all()]
         return Response(row)
 
-    @action(detail=True, methods=["post"], url_path=r"routines/(?P<routine_id>[^/.]+)/save")
+    @action(detail=True, methods=["post", "delete"], url_path=r"routines/(?P<routine_id>[^/.]+)/save")
     def save_routine(self, request, id=None, routine_id=None):
-        """Guardar en mi cuenta una rutina de un amigo."""
+        """Guardar en mi cuenta una rutina de un amigo. DELETE lo deshace (borra mi copia)."""
         person = self.get_object()
+        mine = Routine.objects.filter(user=request.user, source_id=routine_id, source__user=person)
+        if request.method == "DELETE":
+            mine.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        if mine.exists():
+            return Response(RoutineSerializer(mine.prefetch_related("items__exercise").first(), context={"request": request}).data)
         if person.id not in friend_ids(request.user):
             raise PermissionDenied("Solo podés guardar rutinas de tus amigos.")
         from workouts.views import copy_routine

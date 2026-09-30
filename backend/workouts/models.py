@@ -20,6 +20,8 @@ class Routine(models.Model):
     name = models.CharField(max_length=120)
     notes = models.TextField(blank=True)
     share_token = models.UUIDField(null=True, blank=True, unique=True, editable=False)
+    # Rutina de la que se copió (guardada del perfil de un amigo o de un link compartido).
+    source = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL, related_name="copies", editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

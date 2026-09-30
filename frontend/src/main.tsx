@@ -184,7 +184,10 @@ function Avatar({ user, size = 34 }: { user: any; size?: number }) {
 function Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate(); const user = useContext(UserContext); const unread = useUnreadNotifications();
   const logout = () => void api("/api/auth/logout/", { method: "POST" }).catch(() => undefined).finally(() => { setToken(null); navigate("/ingresar"); });
+  const { pathname } = useLocation(); const scroller = useRef<HTMLDivElement>(null);
+  useEffect(() => { scroller.current?.scrollTo(0, 0); window.scrollTo(0, 0); }, [pathname]);
   return <>
+    <div className="app-scroll" ref={scroller}>
     <header className="topbar">
       <Link to="/inicio" className="brand" aria-label="Dynamo, inicio"><Logo size={34} /><Wordmark height={22} /></Link>
       <nav className="top-nav">{NAV.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to} end><Icon size={16} />{label}</NavLink>)}</nav>
@@ -196,7 +199,8 @@ function Layout({ children }: { children: React.ReactNode }) {
         <button className="icon-btn header-logout" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={logout}><LogOut size={18} /></button>
       </div>
     </header>
-    <main key={useLocation().pathname}>{children}</main>
+    <main key={pathname}>{children}</main>
+    </div>
     <Toasts />
     <nav className="bottom-nav">{NAV.map(({ to, label, icon: Icon, main }) => <NavLink key={to} to={to} end className={main ? "main" : undefined}><span className="nav-icon"><Icon size={main ? 22 : 20} /></span>{label}</NavLink>)}</nav>
   </>;
@@ -320,8 +324,9 @@ function WorkoutCard({ w }: { w: any }) {
     <div className="pw-stats"><span><b>{w.duration_min ?? "—"}</b>min</span><span><b>{w.set_count}</b>series</span><span><b>{kg(w.volume)}</b>kg</span></div>
   </div>;
 }
-function PostCard({ post, onChange, onDelete }: { post: any; onChange: (p: any) => void; onDelete: () => void }) {
-  const [comments, setComments] = useState<any[] | null>(null); const [comment, setComment] = useState(""); const [pop, setPop] = useState(false);
+function PostCard({ post, onChange, onDelete, onFollowed }: { post: any; onChange: (p: any) => void; onDelete: () => void; onFollowed?: (authorId: string) => void }) {
+  const [comments, setComments] = useState<any[] | null>(null); const [comment, setComment] = useState(""); const [pop, setPop] = useState(false); const [following, setFollowing] = useState(false);
+  const follow = () => { setFollowing(true); void api(`/api/profiles/${post.author.id}/follow/`, { method: "POST" }).then((p) => { onFollowed?.(post.author.id); toast(p.is_friend ? `¡Ahora vos y ${firstNameOf(post.author.name)} son amigos!` : `Seguís a ${firstNameOf(post.author.name)}`, "👋"); }).catch((e: Error) => toast(e.message, "⚠️")).finally(() => setFollowing(false)); };
   const like = () => {
     setPop(true); setTimeout(() => setPop(false), 450);
     onChange({ ...post, liked: !post.liked, like_count: post.like_count + (post.liked ? -1 : 1) });
@@ -332,6 +337,7 @@ function PostCard({ post, onChange, onDelete }: { post: any; onChange: (p: any) 
   return <article className="panel post" id={`post-${post.id}`}>
     <header className="post-head">
       <Link to={`/usuario?id=${post.author.id}`} className="post-author"><Avatar user={post.author} size={40} /><span><b>{post.author.name}</b><small>{timeAgo(post.created_at)} · {post.visibility === "public" ? <><Globe size={11} /> Público</> : <><Users size={11} /> Amigos</>}</small></span></Link>
+      {!post.is_mine && post.author.is_following === false && <button type="button" className="btn primary follow-btn post-follow" onClick={follow} disabled={following}>Seguir</button>}
       {post.is_mine && <ConfirmButton iconOnly label="Borrar publicación" confirmLabel="Borrar" onConfirm={() => void api(`/api/posts/${post.id}/`, { method: "DELETE" }).then(onDelete)} />}
     </header>
     {post.text && <p className="post-text">{post.text}</p>}
@@ -349,7 +355,8 @@ function PostCard({ post, onChange, onDelete }: { post: any; onChange: (p: any) 
   </article>;
 }
 function PostList({ posts, setPosts }: { posts: any[]; setPosts: (fn: (old: any[]) => any[]) => void }) {
-  return <>{posts.map((p) => <PostCard key={p.id} post={p} onChange={(next) => setPosts((old) => old.map((x) => x.id === next.id ? next : x))} onDelete={() => setPosts((old) => old.filter((x) => x.id !== p.id))} />)}</>;
+  const followed = (authorId: string) => setPosts((old) => old.map((x) => x.author.id === authorId ? { ...x, author: { ...x.author, is_following: true } } : x));
+  return <>{posts.map((p) => <PostCard key={p.id} post={p} onFollowed={followed} onChange={(next) => setPosts((old) => old.map((x) => x.id === next.id ? next : x))} onDelete={() => setPosts((old) => old.filter((x) => x.id !== p.id))} />)}</>;
 }
 function FeedTab({ onFindPeople }: { onFindPeople: () => void }) {
   const [posts, setPosts] = useState<any[]>([]); const [loaded, setLoaded] = useState(false);
@@ -358,33 +365,63 @@ function FeedTab({ onFindPeople }: { onFindPeople: () => void }) {
   return <div className="feed">
     <Composer onPosted={(p) => setPosts((old) => [p, ...old])} />
     <PostList posts={posts} setPosts={setPosts} />
-    {loaded && !posts.length && <section className="panel"><Empty icon={<Users />} title="Todavía no hay actividad">Seguí a tus amigos para ver cómo entrenan, o compartí tu último entrenamiento.<button type="button" className="btn ghost" onClick={onFindPeople}><Search size={16} /> Buscar amigos</button></Empty></section>}
+    {loaded && !posts.length && <section className="panel"><Empty icon={<Users />} title="Todavía no hay actividad">Seguí a gente para ver cómo entrena, o compartí tu último entrenamiento.<button type="button" className="btn ghost" onClick={onFindPeople}><Search size={16} /> Buscar amigos</button></Empty></section>}
   </div>;
 }
 function PersonRow({ person, onChange }: { person: any; onChange: (p: any) => void }) {
   const [busy, setBusy] = useState(false);
   const follow = () => { setBusy(true); void api(`/api/profiles/${person.id}/follow/`, { method: person.is_following ? "DELETE" : "POST" }).then(onChange).finally(() => setBusy(false)); };
-  const tag = person.is_friend ? "Amigos" : person.follows_you ? "Te sigue" : "";
+  const tag = person.reason && !person.is_following ? person.reason : person.is_friend ? "Amigos" : person.follows_you ? "Te sigue" : "";
   return <div className="row person-row">
     <Link to={`/usuario?id=${person.id}`} className="person-link"><Avatar user={person} size={42} /><span className="row-main">{person.name}{tag && <small className="no-cap">{tag}</small>}</span></Link>
-    <button type="button" className={`btn ${person.is_following ? "secondary" : "primary"} follow-btn`} onClick={follow} disabled={busy}>{person.is_friend ? <><Check size={14} /> Amigos</> : person.is_following ? "Siguiendo" : person.follows_you ? "Seguir también" : "Seguir"}</button>
+    {!person.is_me && <button type="button" className={`btn ${person.is_following ? "secondary" : "primary"} follow-btn`} onClick={follow} disabled={busy}>{person.is_friend ? <><Check size={14} /> Amigos</> : person.is_following ? "Siguiendo" : person.follows_you ? "Seguir también" : "Seguir"}</button>}
   </div>;
 }
 function PeopleTab() {
   const [query, setQuery] = useState(""); const [results, setResults] = useState<any[]>([]); const [lists, setLists] = useState<any>(null);
   const loadLists = () => Promise.all([api("/api/profiles/"), api("/api/profiles/?tab=followers"), api("/api/profiles/?tab=following")]).then(([friends, followers, following]) => setLists({ friends, followers: followers.filter((p: any) => !p.is_following), following: following.filter((p: any) => !p.is_friend) }));
-  useEffect(() => { void loadLists(); }, []);
+  const [suggested, setSuggested] = useState<any[]>([]);
+  useEffect(() => { void loadLists(); void api("/api/profiles/?tab=suggested").then(setSuggested).catch(() => undefined); }, []);
   useEffect(() => { if (query.trim().length < 2) { setResults([]); return; } const t = setTimeout(() => void api(`/api/profiles/?search=${encodeURIComponent(query.trim())}`).then(setResults), 250); return () => clearTimeout(t); }, [query]);
-  const changed = (p: any) => { setResults((old) => old.map((x) => x.id === p.id ? p : x)); void loadLists(); };
+  const changed = (p: any) => { setResults((old) => old.map((x) => x.id === p.id ? p : x)); setSuggested((old) => old.map((x) => x.id === p.id ? { ...p, reason: x.reason } : x)); void loadLists(); };
+  const shownSuggested = lists ? suggested.filter((p) => !lists.followers.some((f: any) => f.id === p.id)) : [];
   const block = (title: string, rows: any[], hint?: string) => <section className="panel"><div className="section-head"><h3>{title}</h3><span className="pill">{rows.length}</span></div>{hint && <p className="hint">{hint}</p>}<div className="list">{rows.map((p) => <PersonRow key={p.id} person={p} onChange={changed} />)}</div></section>;
   return <div className="people">
     <div className="search"><Search size={18} /><input type="search" aria-label="Buscar personas" placeholder="Buscar por nombre o email…" value={query} onChange={(e) => setQuery(e.target.value)} autoCapitalize="none" autoCorrect="off" /></div>
     {query.trim().length >= 2 ? <section className="panel">{results.length ? <div className="list">{results.map((p) => <PersonRow key={p.id} person={p} onChange={changed} />)}</div> : <p className="hint">No encontramos a nadie con ese nombre.</p>}</section> : lists && <>
       {lists.followers.length > 0 && block("Te siguen", lists.followers, "Seguilos también y quedan como amigos.")}
+      {shownSuggested.length > 0 && <section className="panel"><div className="section-head"><h3><Sparkles size={15} className="accent" /> Sugeridos para vos</h3></div><div className="list">{shownSuggested.map((p) => <PersonRow key={p.id} person={p} onChange={changed} />)}</div></section>}
       {lists.friends.length ? block("Amigos", lists.friends) : <section className="panel"><Empty icon={<Users />} title="Todavía no tenés amigos acá">Buscá a alguien por su nombre. Cuando se siguen entre los dos, quedan como amigos.</Empty></section>}
       {lists.following.length > 0 && block("Siguiendo", lists.following, "Todavía no te siguen.")}
     </>}
   </div>;
+}
+function FollowListSheet({ person, initial, onClose }: { person: { id: string; name: string }; initial: "followers" | "following"; onClose: () => void }) {
+  const [tab, setTab] = useState(initial); const [rows, setRows] = useState<any[] | null>(null);
+  useEffect(() => { setRows(null); void api(`/api/profiles/?user=${person.id}&tab=${tab}`).then(setRows).catch(() => setRows([])); }, [tab]);
+  useEffect(() => { const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose(); window.addEventListener("keydown", esc); return () => window.removeEventListener("keydown", esc); }, []);
+  return <div className="sheet-backdrop" onClick={onClose}><div className="sheet" role="dialog" aria-modal="true" aria-label={tab === "followers" ? "Seguidores" : "Siguiendo"} onClick={(e) => e.stopPropagation()}>
+    <div className="sheet-head"><h3>{person.name}</h3><IconButton label="Cerrar" onClick={onClose}><X size={16} /></IconButton></div>
+    <div className="sheet-body">
+      <div className="segmented" role="tablist">
+        <button type="button" role="tab" aria-selected={tab === "followers"} className={tab === "followers" ? "on" : ""} onClick={() => setTab("followers")}>Seguidores</button>
+        <button type="button" role="tab" aria-selected={tab === "following"} className={tab === "following" ? "on" : ""} onClick={() => setTab("following")}>Siguiendo</button>
+        <span className="seg-indicator" style={{ transform: `translateX(${tab === "followers" ? 0 : 100}%)` }} />
+      </div>
+      {rows === null ? <p className="hint">Cargando…</p> : rows.length ? <div className="list" onClick={(e) => (e.target as HTMLElement).closest("a") && onClose()}>{rows.map((p) => <PersonRow key={p.id} person={p} onChange={(next) => setRows((old) => (old || []).map((x) => x.id === next.id ? { ...next, is_me: x.is_me } : x))} />)}</div>
+        : <p className="hint">{tab === "followers" ? "Todavía no tiene seguidores." : "Todavía no sigue a nadie."}</p>}
+    </div>
+  </div></div>;
+}
+function FollowCounts({ person, followers, following, children }: { person: { id: string; name: string }; followers: number; following: number; children?: React.ReactNode }) {
+  const [open, setOpen] = useState<"followers" | "following" | null>(null);
+  return <>
+    <div className="user-counts">{children}
+      <button type="button" onClick={() => setOpen("followers")}><b>{followers}</b>{followers === 1 ? "seguidor" : "seguidores"}</button>
+      <button type="button" onClick={() => setOpen("following")}><b>{following}</b>siguiendo</button>
+    </div>
+    {open && <FollowListSheet person={person} initial={open} onClose={() => setOpen(null)} />}
+  </>;
 }
 function Friends() {
   const [params, setParams] = useSearchParams(); const tab = params.get("tab") === "personas" ? "personas" : "actividad";
@@ -399,16 +436,33 @@ function Friends() {
   </>;
 }
 function FriendRoutines({ person }: { person: any }) {
-  const [saved, setSaved] = useState<Record<string, boolean>>({}); const [busy, setBusy] = useState("");
-  const save = (r: any) => { setBusy(r.id); void api(`/api/profiles/${person.id}/routines/${r.id}/save/`, { method: "POST" }).then(() => { setSaved((o) => ({ ...o, [r.id]: true })); toast(`«${r.name}» quedó en tus rutinas`, "✅"); }).catch((e: Error) => toast(e.message, "⚠️")).finally(() => setBusy("")); };
+  const [saved, setSaved] = useState<Record<string, string | null>>(() => Object.fromEntries(person.routines.map((r: any) => [r.id, r.saved_id]))); const [busy, setBusy] = useState(""); const [open, setOpen] = useState("");
+  const toggle = (r: any) => {
+    setBusy(r.id); const undo = !!saved[r.id];
+    void api(`/api/profiles/${person.id}/routines/${r.id}/save/`, { method: undo ? "DELETE" : "POST" })
+      .then((d) => { setSaved((o) => ({ ...o, [r.id]: undo ? null : d.id })); toast(undo ? `Sacaste «${r.name}» de tus rutinas` : `«${r.name}» quedó en tus rutinas`, undo ? "↩️" : "✅"); })
+      .catch((e: Error) => toast(e.message, "⚠️")).finally(() => setBusy(""));
+  };
   return <section className="panel">
     <div className="section-head"><h3>{person.is_me ? "Tus rutinas" : `Rutinas de ${firstNameOf(person.name)}`}</h3><span className="pill">{person.routines.length}</span></div>
     {person.is_me && <p className="hint">Tus amigos las ven acá y pueden guardarse una copia.</p>}
-    <div className="list">{person.routines.map((r: any) => <div className="row friend-routine" key={r.id}>
-      <span className="thumb-stack">{r.images.slice(0, 2).map((src: string) => <ExerciseThumb key={src} src={src} size={34} />)}{!r.images.length && <span className="rp-icon"><ListChecks size={16} /></span>}</span>
-      <span className="row-main">{r.name}<small className="no-cap">{r.exercises.join(" · ")}{r.exercise_count > r.exercises.length ? ` y ${r.exercise_count - r.exercises.length} más` : ""}</small></span>
-      {!person.is_me && <button type="button" className={`btn ${saved[r.id] ? "secondary" : "primary"} follow-btn`} disabled={busy === r.id || saved[r.id]} onClick={() => save(r)}>{saved[r.id] ? <><Check size={14} /> Guardada</> : <><ListPlus size={14} /> Guardar</>}</button>}
-    </div>)}</div>
+    <div className="list">{person.routines.map((r: any) => { const expanded = open === r.id; return <div className={`friend-routine-wrap ${expanded ? "open" : ""}`} key={r.id}>
+      <div className="row friend-routine">
+        <button type="button" className="fr-toggle" aria-expanded={expanded} onClick={() => setOpen(expanded ? "" : r.id)}>
+          <span className="thumb-stack">{r.images.slice(0, 2).map((src: string) => <ExerciseThumb key={src} src={src} size={34} />)}{!r.images.length && <span className="rp-icon"><ListChecks size={16} /></span>}</span>
+          <span className="row-main">{r.name}<small className="no-cap">{r.exercise_count} {r.exercise_count === 1 ? "ejercicio" : "ejercicios"}</small></span>
+          <ChevronDown size={16} className="chev" />
+        </button>
+        {!person.is_me && <button type="button" className={`btn ${saved[r.id] ? "secondary" : "primary"} follow-btn`} disabled={busy === r.id} onClick={() => toggle(r)} aria-pressed={!!saved[r.id]} title={saved[r.id] ? "Tocá para sacarla de tus rutinas" : undefined}>{saved[r.id] ? <><Check size={14} /> Guardada</> : <><ListPlus size={14} /> Guardar</>}</button>}
+      </div>
+      {expanded && <div className="fr-items">
+        {r.notes && <p className="hint">{r.notes}</p>}
+        {(r.items || []).map((it: any, i: number) => <Link to={`/ejercicio?id=${it.exercise}`} className="fr-item" key={`${it.exercise}-${i}`}>
+          <span className="fr-num">{i + 1}</span><ExerciseThumb src={it.image} size={38} />
+          <span className="row-main">{it.name}<small className="no-cap">{it.target_sets} × {it.target_reps}</small></span><ChevronRight size={15} className="chev" />
+        </Link>)}
+      </div>}
+    </div>; })}</div>
   </section>;
 }
 function UserProfile() {
@@ -424,7 +478,7 @@ function UserProfile() {
     <PageHead back="/amigos?tab=personas" eyebrow={p.is_me ? "Así te ven los demás" : p.is_friend ? "Amigos" : p.follows_you ? "Te sigue" : "Perfil"} title={p.name} />
     <section className="panel user-hero">
       <Avatar user={p} size={84} />
-      <div className="user-counts"><span><b>{p.stats.workouts_total}</b>entrenos</span><span><b>{p.followers}</b>seguidores</span><span><b>{p.following}</b>siguiendo</span></div>
+      <FollowCounts key={p.id} person={p} followers={p.followers} following={p.following}><span><b>{p.stats.workouts_total}</b>entrenos</span></FollowCounts>
       {!p.is_me && <div className="user-actions">
         <button type="button" className={`btn ${p.is_following ? "secondary" : "primary"}`} onClick={follow}>{p.is_friend ? <><Check size={16} /> Amigos</> : p.is_following ? "Siguiendo" : p.follows_you ? "Seguir también" : "Seguir"}</button>
         {p.is_friend && <Link className="btn secondary" to={`/mensajes?with=${p.id}`}><MessageCircle size={16} /> Mensaje</Link>}
@@ -1026,7 +1080,8 @@ function Profile() {
   const [profileMsg, setProfileMsg] = useState<{ ok: boolean; text: string } | null>(null); const [passwordMsg, setPasswordMsg] = useState<{ ok: boolean; text: string } | null>(null); const [photoBusy, setPhotoBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const apply = (data: any) => { setUser(data); setName(data.name || ""); setEmail(data.email); setGlobalUser(data); };
-  useEffect(() => { void api("/api/auth/me/").then(apply); }, []);
+  const [social, setSocial] = useState<any>(null);
+  useEffect(() => { void api("/api/auth/me/").then((data) => { apply(data); void api(`/api/profiles/${data.id}/`).then(setSocial).catch(() => undefined); }); }, []);
   if (!user) return <Loading label="Cargando perfil…" />;
   const emailChanged = email.trim().toLowerCase() !== user.email;
   const save = () => void api("/api/auth/me/", { method: "PATCH", body: JSON.stringify({ name, ...(emailChanged ? { email, current_password: emailPassword } : {}) }) }).then((data) => { apply(data); setEmailPassword(""); setProfileMsg({ ok: true, text: "Perfil actualizado" }); }).catch((e: Error) => setProfileMsg({ ok: false, text: e.message }));
@@ -1057,6 +1112,7 @@ function Profile() {
           {user.is_staff && <span className="chip down">Admin</span>}
         </div>
         {user.created_at && <div className="member-since"><CalendarDays size={14} /> Miembro desde {new Date(user.created_at).toLocaleDateString("es-AR", { month: "long", year: "numeric" })}</div>}
+        {social?.stats && <FollowCounts person={{ id: user.id, name: user.name || "Vos" }} followers={social.followers} following={social.following}><span><b>{social.stats.workouts_total}</b>entrenos</span></FollowCounts>}
         <div className="profile-links">
           <Link to="/peso" className="row link-row"><span className="row-icon"><Scale size={17} /></span><span className="row-main">Peso y fotos de progreso<small className="no-cap"><Lock size={11} /> Tus fotos son privadas</small></span><ChevronRight size={16} className="chev" /></Link>
           <Link to="/entrenamientos" className="row link-row"><span className="row-icon"><CalendarDays size={17} /></span><span className="row-main">Historial de entrenamientos</span><ChevronRight size={16} className="chev" /></Link>

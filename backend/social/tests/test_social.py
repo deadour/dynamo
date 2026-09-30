@@ -185,3 +185,34 @@ def test_friends_see_and_save_each_others_routines(people):
     assert saved["name"] == "Piernas de Tobi" and saved["items"][0]["target_sets"] == 4
     assert Routine.objects.filter(user=edu, name="Piernas de Tobi").exists()
     assert any(n["kind"] == "routine" for n in client_for(tobi).get("/api/notifications/").json())
+
+    # guardar dos veces no duplica, se ve como guardada y se puede deshacer
+    again = client_for(edu).post(f"/api/profiles/{tobi.id}/routines/{routine.id}/save/").json()
+    assert again["id"] == saved["id"] and Routine.objects.filter(user=edu).count() == 1
+    shown = client_for(edu).get(f"/api/profiles/{tobi.id}/").json()["routines"][0]
+    assert shown["saved_id"] == saved["id"] and shown["items"][0]["name"] == "Sentadilla" and shown["items"][0]["target_reps"] == "8"
+    assert client_for(edu).delete(f"/api/profiles/{tobi.id}/routines/{routine.id}/save/").status_code == 204
+    assert not Routine.objects.filter(user=edu).exists() and Routine.objects.filter(pk=routine.pk).exists()
+
+
+@pytest.mark.django_db
+def test_feed_includes_public_posts_from_strangers_with_follow_state(people):
+    edu, stranger = people["edu"], people["extraño"]
+    client_for(stranger).post("/api/posts/", {"text": "Hola mundo", "visibility": "public"}, format="json")
+    client_for(stranger).post("/api/posts/", {"text": "Privado", "visibility": "friends"}, format="json")
+    feed = client_for(edu).get("/api/posts/").json()["results"]
+    assert [(p["text"], p["author"]["is_following"]) for p in feed] == [("Hola mundo", False)]
+
+
+@pytest.mark.django_db
+def test_followers_lists_of_someone_else_and_suggestions(people):
+    edu, tobi, tomi, stranger = people["edu"], people["tobi"], people["tomi"], people["extraño"]
+    Follow.objects.create(follower=edu, following=tobi)
+    Follow.objects.create(follower=tobi, following=tomi)
+    Follow.objects.create(follower=stranger, following=edu)
+    client = client_for(edu)
+    assert [p["name"] for p in client.get(f"/api/profiles/?user={tobi.id}&tab=following").json()] == ["Tomi"]
+    followers = client.get(f"/api/profiles/?user={tobi.id}&tab=followers").json()
+    assert [(p["name"], p["is_me"]) for p in followers] == [("Edu", True)]
+    suggested = client.get("/api/profiles/?tab=suggested").json()
+    assert [(p["name"], p["reason"]) for p in suggested] == [("Tomi", "Lo sigue Tobi"), ("Extraño", "Te sigue")]

@@ -73,7 +73,11 @@ class PostSerializer(serializers.ModelSerializer):
         extra_kwargs = {"achievement": {"write_only": True}, "workout": {"write_only": True}}
 
     def get_author(self, obj):
-        return author(obj.user)
+        row = author(obj.user)
+        following = self.context.get("following")
+        if following is not None:
+            row["is_following"] = obj.user_id in following
+        return row
 
     def get_is_mine(self, obj):
         return obj.user_id == self.context["request"].user.id
