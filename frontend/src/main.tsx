@@ -1114,7 +1114,7 @@ function Profile() {
         {user.created_at && <div className="member-since"><CalendarDays size={14} /> Miembro desde {new Date(user.created_at).toLocaleDateString("es-AR", { month: "long", year: "numeric" })}</div>}
         {social?.stats && <FollowCounts person={{ id: user.id, name: user.name || "Vos" }} followers={social.followers} following={social.following}><span><b>{social.stats.workouts_total}</b>entrenos</span></FollowCounts>}
         <div className="profile-links">
-          <Link to="/peso" className="row link-row"><span className="row-icon"><Scale size={17} /></span><span className="row-main">Peso y fotos de progreso<small className="no-cap"><Lock size={11} /> Tus fotos son privadas</small></span><ChevronRight size={16} className="chev" /></Link>
+          <Link to="/peso" className="row link-row"><span className="row-icon"><Scale size={17} /></span><span className="row-main">Peso y fotos de progreso<small className="no-cap"><Lock size={11} /> Tus datos son privados</small></span><ChevronRight size={16} className="chev" /></Link>
           <Link to="/entrenamientos" className="row link-row"><span className="row-icon"><CalendarDays size={17} /></span><span className="row-main">Historial de entrenamientos</span><ChevronRight size={16} className="chev" /></Link>
           <Link to={`/usuario?id=${user.id}`} className="row link-row"><span className="row-icon"><Globe size={17} /></span><span className="row-main">Cómo te ven tus amigos</span><ChevronRight size={16} className="chev" /></Link>
         </div>
