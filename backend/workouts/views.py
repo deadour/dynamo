@@ -3,8 +3,8 @@ from django.db.models import Q
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import Workout, WorkoutExercise, WorkoutSet
-from .serializers import WorkoutSerializer, WorkoutExerciseSerializer, SetSerializer
+from .models import Routine, Workout, WorkoutExercise, WorkoutSet
+from .serializers import RoutineSerializer, WorkoutSerializer, WorkoutExerciseSerializer, SetSerializer
 class WorkoutViewSet(viewsets.ModelViewSet):
     serializer_class=WorkoutSerializer
     def get_queryset(self):
@@ -48,3 +48,16 @@ class WorkoutSetViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         serializer.save(workout_exercise=self.get_object().workout_exercise)
+
+
+
+class RoutineViewSet(viewsets.ModelViewSet):
+    serializer_class = RoutineSerializer
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False) or not self.request.user.is_authenticated:
+            return Routine.objects.none()
+        return Routine.objects.filter(user=self.request.user).prefetch_related("items__exercise")
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)

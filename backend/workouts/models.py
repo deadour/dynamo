@@ -12,3 +12,27 @@ class WorkoutSet(models.Model):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False); workout_exercise=models.ForeignKey(WorkoutExercise,on_delete=models.CASCADE,related_name="sets"); set_number=models.PositiveIntegerField(); reps=models.PositiveIntegerField(); weight_kg=models.DecimalField(max_digits=7,decimal_places=2); set_type=models.CharField(max_length=10,choices=TYPES,default="normal"); completed=models.BooleanField(default=True); created_at=models.DateTimeField(auto_now_add=True); updated_at=models.DateTimeField(auto_now=True)
     @property
     def volume(self): return self.weight_kg * self.reps if self.completed else 0
+
+
+class Routine(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="routines")
+    name = models.CharField(max_length=120)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+
+class RoutineExercise(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    routine = models.ForeignKey(Routine, on_delete=models.CASCADE, related_name="items")
+    exercise = models.ForeignKey(Exercise, on_delete=models.CASCADE)
+    order = models.PositiveIntegerField(default=0)
+    target_sets = models.PositiveIntegerField(null=True, blank=True)
+    target_reps = models.CharField(max_length=20, blank=True)
+
+    class Meta:
+        ordering = ["order"]

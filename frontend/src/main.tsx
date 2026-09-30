@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Link, Navigate, NavLink, Route, Routes, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Activity, ArrowLeft, Camera, CalendarDays, Check, ChevronRight, Dumbbell, Flame, History, Home, LogOut, Pencil, Plus, Save, Scale, Search, ShieldCheck, SlidersHorizontal, Sparkles, Timer, Trash2, TrendingDown, TrendingUp, Trophy, UserRound, Users, X } from "lucide-react";
+import { BrowserRouter, Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Activity, ArrowLeft, Camera, CalendarDays, Check, ChevronDown, ChevronRight, ChevronUp, Dumbbell, Flame, History, Home, ListChecks, LogOut, Pencil, Plus, Save, Scale, Search, ShieldCheck, SlidersHorizontal, Sparkles, Timer, Trash2, TrendingDown, TrendingUp, Trophy, UserRound, Users, X } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import "./styles.css";
 
@@ -35,8 +35,12 @@ const kg = (value: number | string | null | undefined) => value === null || valu
 const parseDate = (value: string) => { const [y, m, d] = value.slice(0, 10).split("-").map(Number); return new Date(y, m - 1, d); };
 const shortDate = (value: string) => parseDate(value).toLocaleDateString("es-AR", { day: "numeric", month: "short" });
 const longDate = (value: string) => parseDate(value).toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
-const LEVELS: Record<string, string> = { beginner: "Principiante", intermediate: "Intermedio", advanced: "Avanzado", expert: "Avanzado" };
-const EQUIPMENT: Record<string, string> = { barbell: "Barra", dumbbell: "Mancuernas", cable: "Polea", "body only": "Peso corporal", machine: "Máquina", kettlebells: "Kettlebell", bands: "Bandas", "e-z curl bar": "Barra Z" };
+const LEVELS: Record<string, string> = { beginner: "Principiante", intermediate: "Intermedio", advanced: "Avanzado", expert: "Experto" };
+const CATEGORIES: Record<string, string> = { strength: "Fuerza", stretching: "Estiramiento", plyometrics: "Pliometría", powerlifting: "Powerlifting", "olympic weightlifting": "Halterofilia", strongman: "Strongman", cardio: "Cardio" };
+const FORCES: Record<string, string> = { push: "Empuje", pull: "Tracción", static: "Estático" };
+const MECHANICS: Record<string, string> = { compound: "Multiarticular", isolation: "Aislamiento" };
+const label = (map: Record<string, string>, value?: string) => value ? map[value.toLowerCase()] || value : "";
+const EQUIPMENT: Record<string, string> = { barbell: "Barra", dumbbell: "Mancuernas", cable: "Polea", machine: "Máquina", "body only": "Peso corporal", "e-z curl bar": "Barra Z", kettlebells: "Kettlebell", bands: "Bandas elásticas", "exercise ball": "Pelota suiza", "medicine ball": "Balón medicinal", "foam roll": "Rodillo de espuma", other: "Otro" };
 const equipmentLabel = (value?: string) => value ? EQUIPMENT[value.toLowerCase()] || value : "Sin equipamiento";
 const MUSCLES: Record<string, string> = { abdominals: "Abdominales", abductors: "Abductores", adductors: "Aductores", biceps: "Bíceps", calves: "Gemelos", chest: "Pecho", forearms: "Antebrazos", glutes: "Glúteos", hamstrings: "Isquiotibiales", lats: "Dorsales", "lower back": "Lumbares", "middle back": "Espalda media", neck: "Cuello", quadriceps: "Cuádriceps", shoulders: "Hombros", traps: "Trapecios", triceps: "Tríceps" };
 const muscleLabel = (value: string) => MUSCLES[value] || value;
@@ -136,7 +140,7 @@ export function Login({ onLogin }: { onLogin?: (user: any) => void }) {
       <section className="auth-hero">
         <div className="brand"><Logo size={52} /><Wordmark height={40} /></div>
         <h1>Cada serie <span className="accent">cuenta.</span></h1>
-        <p>Registrá tus entrenamientos, seguí tus récords y mirá cómo cambia tu cuerpo semana a semana.</p>
+        <p>Registrá tus entrenamientos, seguí tus récords y mirá cómo evolucionás semana a semana.</p>
         <div className="float-cards">
           <div className="float-card fc-1"><span className="stat-icon tone-accent"><Trophy size={16} /></span><div><small>Nuevo récord</small><b>Press de banca · 100 kg</b></div></div>
           <div className="float-card fc-2"><span className="stat-icon tone-orange"><Flame size={16} /></span><div><small>Volumen semanal</small><b>+18% vs. anterior</b></div></div>
@@ -170,6 +174,7 @@ const NAV = [
   { to: "/inicio", label: "Inicio", icon: Home },
   { to: "/ejercicios", label: "Ejercicios", icon: Search },
   { to: "/entrenar", label: "Entrenar", icon: Dumbbell, main: true },
+  { to: "/rutinas", label: "Rutinas", icon: ListChecks, desktopOnly: true },
   { to: "/peso", label: "Peso", icon: Scale },
   { to: "/perfil", label: "Perfil", icon: UserRound },
 ];
@@ -191,7 +196,7 @@ function Layout({ children }: { children: React.ReactNode }) {
       </div>
     </header>
     <main>{children}</main>
-    <nav className="bottom-nav">{NAV.map(({ to, label, icon: Icon, main }) => <NavLink key={to} to={to} end className={main ? "main" : undefined}><span className="nav-icon"><Icon size={main ? 22 : 20} /></span>{label}</NavLink>)}</nav>
+    <nav className="bottom-nav">{NAV.filter((n) => !n.desktopOnly).map(({ to, label, icon: Icon, main }) => <NavLink key={to} to={to} end className={main ? "main" : undefined}><span className="nav-icon"><Icon size={main ? 22 : 20} /></span>{label}</NavLink>)}</nav>
   </>;
 }
 
@@ -240,8 +245,8 @@ function Exercises() {
       <div className="search"><Search size={18} /><input aria-label="Buscar ejercicio" placeholder="Buscar por nombre…" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && load()} /></div>
       <div className="filters">
         <select aria-label="Grupo muscular" value={group} onChange={(e) => setGroup(e.target.value)}><option value="">Todos los músculos</option>{GROUPS.map((g) => <option key={g.key} value={g.key}>{g.label}</option>)}</select>
-        <select aria-label="Equipamiento" value={equipment} onChange={(e) => setEquipment(e.target.value)}><option value="">Todo el equipamiento</option><option value="barbell">Barra</option><option value="dumbbell">Mancuernas</option><option value="cable">Polea</option><option value="body only">Peso corporal</option></select>
-        <select aria-label="Dificultad" value={difficulty} onChange={(e) => setDifficulty(e.target.value)}><option value="">Toda dificultad</option><option value="beginner">Principiante</option><option value="intermediate">Intermedio</option><option value="advanced">Avanzado</option></select>
+        <select aria-label="Equipamiento" value={equipment} onChange={(e) => setEquipment(e.target.value)}><option value="">Todo el equipamiento</option>{Object.entries(EQUIPMENT).map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select>
+        <select aria-label="Dificultad" value={difficulty} onChange={(e) => setDifficulty(e.target.value)}><option value="">Toda dificultad</option><option value="beginner">Principiante</option><option value="intermediate">Intermedio</option><option value="expert">Experto</option></select>
         <button className="btn secondary" onClick={load}><SlidersHorizontal size={16} /> Filtrar</button>
       </div>
     </div>
@@ -250,7 +255,7 @@ function Exercises() {
       <div className="exercise-body">
         <b>{item.name_es || item.name}</b>
         {item.name_es && item.name_es !== item.name && <small className="original-name">{item.name}</small>}
-        <div className="tags">{item.primary_muscles?.slice(0, 2).map((m: string) => <span key={m}>{muscleLabel(m)}</span>)}<span className="muted-tag">{equipmentLabel(item.equipment)}</span></div>
+        <div className="tags">{item.primary_muscles?.slice(0, 2).map((m: string) => <span key={m}>{muscleLabel(m)}</span>)}<span className="muted-tag">{equipmentLabel(item.equipment)}</span>{item.category && item.category !== "strength" && <span className="muted-tag">{label(CATEGORIES, item.category)}</span>}</div>
       </div>
     </Link>)}</div>
     {loaded && !items.length && <Empty icon={<Search />} title="No encontramos ejercicios">Probá con otro nombre o quitá los filtros.</Empty>}
@@ -265,30 +270,76 @@ function useElapsed(since?: string) {
   return hh ? `${hh}:${pad(mm)}:${pad(ss)}` : `${pad(mm)}:${pad(ss)}`;
 }
 const ACTIVE_KEY = "dynamo.activeWorkout";
-const toBlocks = (workout: any) => workout.exercises.map((e: any) => ({ weId: e.id, exerciseId: e.exercise, name: e.exercise_name, sets: e.sets }));
-function WorkoutRecorder() {
-  const [workout, setWorkout] = useState<any>(() => JSON.parse(localStorage.getItem(ACTIVE_KEY) || "null"));
-  const [blocks, setBlocks] = useState<any[]>([]); const [current, setCurrent] = useState<any>(null);
-  const [suggestions, setSuggestions] = useState<any>({ frequent: [], muscles_last_trained: {} });
+const toBlocks = (workout: any) => (workout?.exercises || []).map((e: any) => ({ weId: e.id, exerciseId: e.exercise, name: e.exercise_name, sets: e.sets }));
+function ExerciseThumb({ src, size = 44 }: { src?: string; size?: number }) {
+  const [broken, setBroken] = useState(false);
+  return src && !broken ? <img className="ex-thumb" src={src} alt="" loading="lazy" style={{ width: size, height: size }} onError={() => setBroken(true)} /> : <span className="ex-thumb empty" style={{ width: size, height: size }}><Dumbbell size={size * 0.4} /></span>;
+}
+function ExerciseOption({ item, onPick, action = <Plus size={16} /> }: { item: any; onPick: () => void; action?: React.ReactNode }) {
+  return <button type="button" className="picker-option" onClick={onPick}>
+    <ExerciseThumb src={item.image_1 || item.image} />
+    <span>{exerciseName(item)}<small>{[item.primary_muscles?.map(muscleLabel).join(", "), item.equipment ? equipmentLabel(item.equipment) : ""].filter(Boolean).join(" · ")}</small></span>
+    {action}
+  </button>;
+}
+// Buscador de ejercicios con grupos musculares, habituales, recientes y resultados con foto.
+function ExercisePicker({ onPick, suggestions, excludeIds = [] }: { onPick: (item: any) => void; suggestions: any; excludeIds?: string[] }) {
   const [group, setGroup] = useState(""); const [query, setQuery] = useState(""); const [options, setOptions] = useState<any[]>([]);
-  const [weight, setWeight] = useState(""); const [reps, setReps] = useState(""); const [error, setError] = useState(""); const [added, setAdded] = useState("");
-  const elapsed = useElapsed(workout?.started_at);
-  const clearActive = () => { localStorage.removeItem(ACTIVE_KEY); setWorkout(null); setBlocks([]); setCurrent(null); };
-  useEffect(() => { void api("/api/exercises/suggestions/").then(setSuggestions).catch(() => undefined); }, []);
-  useEffect(() => { if (workout) void api(`/api/workouts/${workout.id}/`).then((d) => setBlocks(toBlocks(d))).catch(clearActive); }, [workout?.id]);
-  const groupMuscles = GROUPS.find((g) => g.key === group)?.muscles;
+  const groupMuscles = GROUPS.find((g) => g.key === group)?.muscles; const groupLabel = GROUPS.find((g) => g.key === group)?.label.toLowerCase();
   useEffect(() => {
     if (!groupMuscles && query.trim().length < 2) { setOptions([]); return; }
     const params = new URLSearchParams({ search: query.trim(), exclude_category: "stretching,cardio" }); if (groupMuscles) params.set("muscle", groupMuscles.join(","));
     const t = setTimeout(() => void api(`/api/exercises/?${params}`).then((d) => setOptions((d.results || d).slice(0, 12))), 250); return () => clearTimeout(t);
   }, [group, query]);
-  const lastByGroup = GROUPS.map((g) => { const dates = g.muscles.map((m) => suggestions.muscles_last_trained[m]).filter(Boolean).sort(); return { ...g, days: daysSince(dates[dates.length - 1]) }; });
+  const lastByGroup = GROUPS.map((g) => { const dates = g.muscles.map((m) => suggestions.muscles_last_trained?.[m]).filter(Boolean).sort(); return { ...g, days: daysSince(dates[dates.length - 1]) }; });
   // "Te toca": el grupo que ya entrenás y hace más tiempo que no trabajás.
   const trained = lastByGroup.filter((g) => g.days !== null && g.days >= 2);
   const due = trained.length ? trained.reduce((a, b) => b.days! > a.days! ? b : a).key : "";
-  const frequent = suggestions.frequent.filter((e: any) => !groupMuscles || e.primary_muscles?.some((m: string) => groupMuscles.includes(m)));
-  const pick = (item: any) => { setCurrent({ id: item.id, name: exerciseName(item) }); setQuery(""); setError(""); };
-  const start = () => void api("/api/workouts/", { method: "POST", body: JSON.stringify({ name: "Entrenamiento", started_at: new Date().toISOString() }) }).then((d) => { setWorkout(d); localStorage.setItem(ACTIVE_KEY, JSON.stringify(d)); });
+  const inGroup = (e: any) => !groupMuscles || e.primary_muscles?.some((m: string) => groupMuscles.includes(m));
+  const frequent = (suggestions.frequent || []).filter(inGroup).filter((e: any) => !excludeIds.includes(e.id));
+  const frequentIds = frequent.map((e: any) => e.id);
+  const recent = (suggestions.recent || []).filter(inGroup).filter((e: any) => !excludeIds.includes(e.id) && !frequentIds.includes(e.id));
+  const pick = (item: any) => { onPick(item); setQuery(""); };
+  return <div className="picker">
+    <div>
+      <h3 className="block-title">¿Qué entrenás hoy?</h3>
+      <div className="chip-row">{lastByGroup.map((g) => <button type="button" key={g.key} className={`group-chip ${group === g.key ? "active" : ""}`} onClick={() => setGroup(group === g.key ? "" : g.key)}>
+        <span>{g.label}{g.key === due && <em>Te toca</em>}</span><small>{agoLabel(g.days)}</small>
+      </button>)}</div>
+    </div>
+    {frequent.length > 0 && <div><h3 className="block-title"><History size={15} /> Tus habituales</h3><div className="chip-row">{frequent.map((e: any) => <button type="button" key={e.id} className="pick-chip" onClick={() => pick(e)}><ExerciseThumb src={e.image_1} size={26} />{exerciseName(e)}<small>{e.times}×</small></button>)}</div></div>}
+    {recent.length > 0 && <div><h3 className="block-title"><Timer size={15} /> Lo último que hiciste</h3><div className="chip-row">{recent.map((e: any) => <button type="button" key={e.id} className="pick-chip" onClick={() => pick(e)}><ExerciseThumb src={e.image_1} size={26} />{exerciseName(e)}</button>)}</div></div>}
+    <div className="input-icon"><Search size={16} /><input aria-label="Buscar ejercicio" type="search" enterKeyHint="search" autoCapitalize="none" autoCorrect="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={group ? `Buscar en ${groupLabel}…` : "Buscar ejercicio"} /></div>
+    {options.length > 0 && <div className="picker-results">{group && !query && <div className="picker-head"><Sparkles size={13} /> Sugeridos para {groupLabel}</div>}{options.map((item) => <ExerciseOption key={item.id} item={item} onPick={() => pick(item)} />)}</div>}
+  </div>;
+}
+function useSuggestions() {
+  const [suggestions, setSuggestions] = useState<any>({ frequent: [], recent: [], muscles_last_trained: {} });
+  useEffect(() => { void api("/api/exercises/suggestions/").then(setSuggestions).catch(() => undefined); }, []);
+  return suggestions;
+}
+const targetLabel = (item: any) => [item.target_sets ? `${item.target_sets} series` : "", item.target_reps ? `${item.target_reps} reps` : ""].filter(Boolean).join(" × ");
+
+function WorkoutRecorder() {
+  const navState = (useLocation().state as any) || {}; const presetExercise = navState.exercise; const presetRoutine = navState.routine;
+  const [workout, setWorkout] = useState<any>(() => JSON.parse(localStorage.getItem(ACTIVE_KEY) || "null"));
+  const [blocks, setBlocks] = useState<any[]>([]); const [current, setCurrent] = useState<any>(presetExercise || null);
+  const [routines, setRoutines] = useState<any[]>([]); const [picking, setPicking] = useState(false);
+  const suggestions = useSuggestions();
+  const [weight, setWeight] = useState(""); const [reps, setReps] = useState(""); const [error, setError] = useState(""); const [added, setAdded] = useState("");
+  const elapsed = useElapsed(workout?.started_at);
+  const routine = workout?.routine;
+  const clearActive = () => { localStorage.removeItem(ACTIVE_KEY); setWorkout(null); setBlocks([]); setCurrent(null); };
+  useEffect(() => { if (!workout) void api("/api/routines/").then((d) => setRoutines(d.results || d)).catch(() => undefined); }, [workout?.id]);
+  useEffect(() => { if (workout) void api(`/api/workouts/${workout.id}/`).then((d) => setBlocks(toBlocks(d))).catch((e: Error) => { if (/no encontrado|not found/i.test(e.message)) clearActive(); }); }, [workout?.id]);
+  // Con rutina: arranca en el primer ejercicio que todavía no tiene series
+  useEffect(() => { if (routine && !current && blocks) { const next = routine.items.find((it: any) => !blocks.some((b) => b.exerciseId === it.exercise)); if (next) setCurrent({ id: next.exercise, name: next.exercise_name }); } }, [routine?.id, blocks.length]);
+  const pick = (item: any) => { setCurrent({ id: item.id, name: exerciseName(item) }); setPicking(false); setError(""); };
+  const start = (withRoutine?: any) => void api("/api/workouts/", { method: "POST", body: JSON.stringify({ name: withRoutine?.name || "Entrenamiento", started_at: new Date().toISOString() }) }).then((d) => {
+    const active = { ...d, routine: withRoutine ? { id: withRoutine.id, name: withRoutine.name, items: withRoutine.items } : null };
+    setWorkout(active); localStorage.setItem(ACTIVE_KEY, JSON.stringify(active));
+    if (withRoutine?.items?.length && !presetExercise) setCurrent({ id: withRoutine.items[0].exercise, name: withRoutine.items[0].exercise_name });
+  });
   const add = async () => {
     if (!current) return setError("Elegí un ejercicio primero.");
     if (!(Number(reps) > 0) || weight === "" || Number(weight) < 0) return setError("Completá peso y repeticiones.");
@@ -311,18 +362,32 @@ function WorkoutRecorder() {
   const finish = () => void api(`/api/workouts/${workout.id}/finish/`, { method: "POST" }).then(clearActive);
   const discard = () => void api(`/api/workouts/${workout.id}/`, { method: "DELETE" }).then(clearActive);
   const allSets = blocks.flatMap((b) => b.sets); const volume = allSets.reduce((sum, s) => sum + Number(s.weight_kg) * Number(s.reps), 0);
-  const groupLabel = GROUPS.find((g) => g.key === group)?.label.toLowerCase();
-  if (!workout) return <>
-    <PageHead eyebrow="Nueva sesión" title="Registrar entrenamiento" />
-    <section className="panel start-card">
-      <div className="start-icon"><Dumbbell size={30} /></div>
-      <h3>¿Listo para entrenar?</h3>
-      <p>Iniciá la sesión y cargá cada serie a medida que la completás. El cronómetro arranca solo.</p>
-      <button className="btn primary wide lg" onClick={start}>Iniciar entrenamiento</button>
-    </section>
-  </>;
+  const setsOf = (exerciseId: string) => blocks.find((b) => b.exerciseId === exerciseId)?.sets.length || 0;
+
+  if (!workout) {
+    const featured = presetRoutine ? [presetRoutine, ...routines.filter((r) => r.id !== presetRoutine.id)] : routines;
+    return <>
+      <PageHead eyebrow="Nueva sesión" title="Entrenar" />
+      <div className="start-grid">
+        <section className="panel start-card">
+          <div className="start-icon"><Dumbbell size={30} /></div>
+          <h3>Entrenamiento libre</h3>
+          <p>{presetExercise ? <>Arrancás con <b>{presetExercise.name}</b>. </> : null}Elegí los ejercicios sobre la marcha. El cronómetro arranca solo.</p>
+          <button className="btn primary wide lg" onClick={() => start()}>Empezar</button>
+        </section>
+        <section className="panel">
+          <div className="section-head"><h3>Tus rutinas</h3><Link to="/rutinas">Gestionar <ChevronRight size={15} /></Link></div>
+          {featured.length ? <div className="list">{featured.map((r) => <div className={`row routine-row ${presetRoutine?.id === r.id ? "highlight" : ""}`} key={r.id}>
+            <div className="thumb-stack">{r.items.slice(0, 3).map((it: any) => <ExerciseThumb key={it.id} src={it.image} size={34} />)}</div>
+            <span className="row-main">{r.name}<small>{r.items.length} {r.items.length === 1 ? "ejercicio" : "ejercicios"}</small></span>
+            <button className="btn primary" onClick={() => start(r)} disabled={!r.items.length}>Empezar</button>
+          </div>)}</div> : <Empty icon={<ListChecks />} title="Todavía no tenés rutinas">Armá tus rutinas y entrená siguiendo tus ejercicios, sin buscarlos cada vez.<Link to="/rutina?id=nueva" className="btn ghost"><Plus size={16} /> Crear rutina</Link></Empty>}
+        </section>
+      </div>
+    </>;
+  }
   return <>
-    <PageHead eyebrow={<><span className="live-dot" /> En curso</>} title="Entrenamiento" action={<ConfirmButton label="Descartar" confirmLabel="¿Descartar todo?" onConfirm={discard} />} />
+    <PageHead eyebrow={<><span className="live-dot" /> En curso{routine ? ` · ${routine.name}` : ""}</>} title="Entrenamiento" action={<ConfirmButton label="Descartar" confirmLabel="¿Descartar todo?" onConfirm={discard} />} />
     <div className="session-bar">
       <div><Timer size={16} /><b>{elapsed}</b><small>Duración</small></div>
       <div><Activity size={16} /><b>{allSets.length}</b><small>Series</small></div>
@@ -330,32 +395,83 @@ function WorkoutRecorder() {
     </div>
     <div className="recorder">
       <section className="panel form">
-        {current ? <div className="current-exercise"><span className="row-icon"><Dumbbell size={17} /></span><div><small>Ejercicio</small><b>{current.name}</b></div><button type="button" className="btn secondary" onClick={() => setCurrent(null)}>Cambiar</button></div> : <>
-          <div>
-            <h3 className="block-title">¿Qué entrenás hoy?</h3>
-            <div className="chip-row">{lastByGroup.map((g) => <button type="button" key={g.key} className={`group-chip ${group === g.key ? "active" : ""}`} onClick={() => setGroup(group === g.key ? "" : g.key)}>
-              <span>{g.label}{g.key === due && <em>Te toca</em>}</span><small>{agoLabel(g.days)}</small>
-            </button>)}</div>
-          </div>
-          {frequent.length > 0 && <div><h3 className="block-title"><History size={15} /> Tus habituales</h3><div className="chip-row">{frequent.map((e: any) => <button type="button" key={e.id} className="pick-chip" onClick={() => pick(e)}>{exerciseName(e)}<small>{e.times}×</small></button>)}</div></div>}
-          <div className="input-icon"><Search size={16} /><input aria-label="Buscar ejercicio" type="search" enterKeyHint="search" autoCapitalize="none" autoCorrect="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={group ? `Buscar en ${groupLabel}…` : "Buscar ejercicio"} /></div>
-          {options.length > 0 && <div className="picker-results">{group && !query && <div className="picker-head"><Sparkles size={13} /> Sugeridos para {groupLabel}</div>}{options.map((item) => <button type="button" className="picker-option" key={item.id} onClick={() => pick(item)}><span>{exerciseName(item)}<small>{item.primary_muscles?.map(muscleLabel).join(", ")} · {equipmentLabel(item.equipment)}</small></span><Plus size={16} /></button>)}</div>}
-        </>}
+        {routine && !picking && <div className="routine-steps">
+          <h3 className="block-title"><ListChecks size={15} /> {routine.name}</h3>
+          {routine.items.map((it: any, i: number) => { const done = setsOf(it.exercise); const target = it.target_sets || 0; return <button type="button" key={it.id} className={`routine-step ${current?.id === it.exercise ? "active" : ""} ${target && done >= target ? "done" : ""}`} onClick={() => { setCurrent({ id: it.exercise, name: it.exercise_name }); setError(""); }}>
+            <span className="step-num">{target && done >= target ? <Check size={14} /> : i + 1}</span>
+            <ExerciseThumb src={it.image} size={38} />
+            <span className="step-main">{it.exercise_name}<small>{targetLabel(it) || "Sin objetivo"}</small></span>
+            <span className="step-count">{done}{target ? `/${target}` : ""}</span>
+          </button>; })}
+        </div>}
+        {current && !picking ? <div className="current-exercise"><span className="row-icon"><Dumbbell size={17} /></span><div><small>Ejercicio</small><b>{current.name}</b></div><button type="button" className="btn secondary" onClick={() => setPicking(true)}>{routine ? "Otro" : "Cambiar"}</button></div>
+          : <>{picking && <button type="button" className="link-btn back-link" onClick={() => setPicking(false)}><ArrowLeft size={14} /> Volver{routine ? " a la rutina" : ""}</button>}<ExercisePicker suggestions={suggestions} onPick={pick} /></>}
         <div className="grid two">
           <label>Peso<div className="input-suffix"><input inputMode="decimal" enterKeyHint="next" value={weight} onChange={(e) => setWeight(e.target.value.replace(",", "."))} placeholder="0" /><span>kg</span></div></label>
           <label>Repeticiones<div className="input-suffix"><input inputMode="numeric" enterKeyHint="done" value={reps} onChange={(e) => setReps(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void add()} placeholder="0" /><span>reps</span></div></label>
         </div>
-        {current && blocks.find((b) => b.exerciseId === current.id)?.sets.length > 0 && <div className="done-sets"><small>Hoy</small>{blocks.find((b) => b.exerciseId === current.id).sets.map((s: any, i: number) => <span key={s.id}><b>{i + 1}</b>{kg(s.weight_kg)}×{s.reps}</span>)}</div>}
+        {current && setsOf(current.id) > 0 && <div className="done-sets"><small>Hoy</small>{blocks.find((b) => b.exerciseId === current.id).sets.map((s: any, i: number) => <span key={s.id}><b>{i + 1}</b>{kg(s.weight_kg)}×{s.reps}</span>)}</div>}
         {error && <div className="error inline">{error}</div>}
         <button className="btn primary wide lg" onClick={() => void add()} disabled={!current}>{added ? <><Check size={18} /> {added}</> : <><Plus size={18} /> Agregar serie</>}</button>
       </section>
       <section className="panel">
         <div className="section-head"><h3>Series de hoy</h3><span className="pill">{allSets.length}</span></div>
         {blocks.length ? <div className="stack tight">{blocks.map((b) => <div className="set-block" key={b.weId}>
-          <button type="button" className="set-block-head" onClick={() => setCurrent({ id: b.exerciseId, name: b.name })}>{b.name}<small>{b.sets.length} {b.sets.length === 1 ? "serie" : "series"}</small></button>
+          <button type="button" className="set-block-head" onClick={() => { setCurrent({ id: b.exerciseId, name: b.name }); setPicking(false); }}>{b.name}<small>{b.sets.length} {b.sets.length === 1 ? "serie" : "series"}</small></button>
           {b.sets.map((s: any, i: number) => <div className="set-line" key={s.id}><span className="set-num">{i + 1}</span><span>{kg(s.weight_kg)} <small>kg</small></span><span>{s.reps} <small>reps</small></span><ConfirmButton iconOnly label="Borrar serie" confirmLabel="Borrar" onConfirm={() => void removeSet(b, s.id)} /></div>)}
         </div>)}</div> : <Empty icon={<Activity />} title="Sin series todavía">Elegí un ejercicio y cargá tu primera serie.</Empty>}
         <button className="btn secondary wide" onClick={finish}><Check size={17} /> Finalizar entrenamiento</button>
+      </section>
+    </div>
+  </>;
+}
+
+function Routines() {
+  const navigate = useNavigate(); const [rows, setRows] = useState<any[]>([]); const [loaded, setLoaded] = useState(false);
+  useEffect(() => { void api("/api/routines/").then((d) => { setRows(d.results || d); setLoaded(true); }); }, []);
+  return <>
+    <PageHead eyebrow="Entrenar" title="Rutinas" action={<Link className="btn primary" to="/rutina?id=nueva"><Plus size={18} /> Nueva</Link>} />
+    {rows.length ? <div className="routine-grid">{rows.map((r) => <section className="panel routine-card" key={r.id}>
+      <div className="section-head"><h3>{r.name}</h3><span className="pill">{r.items.length}</span></div>
+      <div className="routine-preview">{r.items.slice(0, 5).map((it: any) => <span key={it.id}><ExerciseThumb src={it.image} size={30} />{it.exercise_name}</span>)}{r.items.length > 5 && <small>+{r.items.length - 5} más</small>}</div>
+      <div className="routine-actions"><Link className="btn secondary" to={`/rutina?id=${r.id}`}><Pencil size={15} /> Editar</Link><button className="btn primary" disabled={!r.items.length} onClick={() => navigate("/entrenar", { state: { routine: r } })}><Dumbbell size={16} /> Empezar</button></div>
+    </section>)}</div> : loaded && <section className="panel"><Empty icon={<ListChecks />} title="Todavía no tenés rutinas">Por ejemplo "Pecho y tríceps" o "Piernas". Después entrenás siguiendo esa lista.<Link to="/rutina?id=nueva" className="btn ghost"><Plus size={16} /> Crear mi primera rutina</Link></Empty></section>}
+  </>;
+}
+function RoutineEditor() {
+  const id = useIdParam(); const isNew = !id || id === "nueva"; const navigate = useNavigate(); const suggestions = useSuggestions();
+  const [name, setName] = useState(""); const [items, setItems] = useState<any[]>([]); const [loaded, setLoaded] = useState(isNew); const [adding, setAdding] = useState(isNew); const [error, setError] = useState("");
+  useEffect(() => { if (!isNew) void api(`/api/routines/${id}/`).then((r) => { setName(r.name); setItems(r.items); setLoaded(true); }); }, [id]);
+  if (!loaded) return <Loading />;
+  const addItem = (ex: any) => { if (items.some((it) => it.exercise === ex.id)) return; setItems((old) => [...old, { key: ex.id, exercise: ex.id, exercise_name: exerciseName(ex), image: ex.image_1, primary_muscles: ex.primary_muscles, target_sets: 3, target_reps: "10" }]); };
+  const update = (i: number, patch: any) => setItems((old) => old.map((it, j) => j === i ? { ...it, ...patch } : it));
+  const move = (i: number, dir: number) => setItems((old) => { const next = old.slice(); const [it] = next.splice(i, 1); next.splice(i + dir, 0, it); return next; });
+  const save = () => {
+    if (!name.trim()) return setError("Ponele un nombre a la rutina.");
+    if (!items.length) return setError("Agregá al menos un ejercicio.");
+    const body = JSON.stringify({ name: name.trim(), items: items.map((it) => ({ exercise: it.exercise, target_sets: it.target_sets ? Number(it.target_sets) : null, target_reps: String(it.target_reps || "") })) });
+    void api(isNew ? "/api/routines/" : `/api/routines/${id}/`, { method: isNew ? "POST" : "PUT", body }).then(() => navigate("/rutinas")).catch((e: Error) => setError(e.message));
+  };
+  const remove = () => void api(`/api/routines/${id}/`, { method: "DELETE" }).then(() => navigate("/rutinas"));
+  return <>
+    <PageHead back="/rutinas" eyebrow={isNew ? "Nueva rutina" : "Editar rutina"} title={name || "Sin nombre"} action={!isNew ? <ConfirmButton label="Borrar" confirmLabel="¿Borrar rutina?" onConfirm={remove} /> : undefined} />
+    <div className="recorder">
+      <section className="panel form">
+        <label>Nombre<input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Pecho y tríceps" /></label>
+        <div className="section-head"><h3>Ejercicios</h3><span className="pill">{items.length}</span></div>
+        {items.length ? <div className="routine-items">{items.map((it, i) => <div className="routine-item" key={it.key || it.id || it.exercise}>
+          <ExerciseThumb src={it.image} size={40} />
+          <div className="routine-item-main"><b>{it.exercise_name}</b>
+            <div className="targets"><input inputMode="numeric" aria-label="Series" value={it.target_sets ?? ""} onChange={(e) => update(i, { target_sets: e.target.value })} /><span>×</span><input aria-label="Repeticiones" value={it.target_reps ?? ""} onChange={(e) => update(i, { target_reps: e.target.value })} placeholder="8-10" /><span>reps</span></div>
+          </div>
+          <div className="line-actions vertical"><IconButton label="Subir" onClick={() => i > 0 && move(i, -1)}><ChevronUp size={15} /></IconButton><IconButton label="Bajar" onClick={() => i < items.length - 1 && move(i, 1)}><ChevronDown size={15} /></IconButton></div>
+          <button type="button" className="remove-item" aria-label="Quitar" title="Quitar" onClick={() => setItems((old) => old.filter((_, j) => j !== i))}><X size={14} /></button>
+        </div>)}</div> : <p className="hint">Todavía no agregaste ejercicios.</p>}
+        {error && <div className="error inline">{error}</div>}
+        <button className="btn primary wide lg" onClick={save}><Save size={18} /> Guardar rutina</button>
+      </section>
+      <section className="panel form">
+        {adding ? <><h3>Agregar ejercicios</h3><ExercisePicker suggestions={suggestions} onPick={addItem} excludeIds={items.map((it) => it.exercise)} /></> : <button className="btn secondary wide" onClick={() => setAdding(true)}><Plus size={17} /> Agregar ejercicios</button>}
       </section>
     </div>
   </>;
@@ -472,15 +588,38 @@ function BodyWeight() {
   </>;
 }
 
+function ExerciseImages({ images, name }: { images: string[]; name: string }) {
+  const [frame, setFrame] = useState(0);
+  useEffect(() => { if (images.length < 2) return; const t = setInterval(() => setFrame((f) => (f + 1) % images.length), 1100); return () => clearInterval(t); }, [images.length]);
+  if (!images.length) return <div className="exercise-hero placeholder"><Dumbbell size={40} /></div>;
+  return <div className="exercise-hero">{images.map((src, i) => <img key={src} src={src} alt={i === 0 ? name : ""} className={i === frame ? "on" : ""} />)}{images.length > 1 && <span className="hero-hint"><Activity size={13} /> Inicio y final del movimiento</span>}</div>;
+}
 function Progress() {
-  const id = useIdParam(); const [data, setData] = useState<any>();
-  useEffect(() => { void api(`/api/progress/exercises/${id}/`).then(setData); }, [id]);
-  if (!data) return <Loading label="Cargando progreso…" />;
+  const id = useIdParam(); const navigate = useNavigate(); const [data, setData] = useState<any>(); const [info, setInfo] = useState<any>(); const [showEnglish, setShowEnglish] = useState(false);
+  useEffect(() => { void api(`/api/progress/exercises/${id}/`).then(setData); void api(`/api/exercises/${id}/`).then(setInfo).catch(() => undefined); }, [id]);
+  if (!data) return <Loading label="Cargando ejercicio…" />;
+  const name = data.exercise.name; const images = [info?.image_1 || data.exercise.image_1, info?.image_2].filter(Boolean);
+  const facts = info ? [label(CATEGORIES, info.category), info.equipment ? equipmentLabel(info.equipment) : "", label(LEVELS, info.difficulty), label(FORCES, info.force), label(MECHANICS, info.mechanic)].filter(Boolean) : [];
+  const steps: string[] = info?.instructions_es?.length ? info.instructions_es : info?.instructions || [];
+  const inEnglish = !!info && !info.instructions_es?.length && steps.length > 0;
   return <>
-    <div className="progress-hero">
-      {data.exercise.image_1 && <img src={data.exercise.image_1} alt="" />}
-      <PageHead back="/ejercicios" eyebrow="Progreso del ejercicio" title={data.exercise.name} />
+    <PageHead back="/ejercicios" eyebrow="Ejercicio" title={name} />
+    {data.exercise.name_original && data.exercise.name_original !== name && <p className="original-title">{data.exercise.name_original}</p>}
+    <div className="exercise-detail">
+      <ExerciseImages images={images} name={name} />
+      <section className="panel exercise-facts">
+        {facts.length > 0 && <div className="fact-chips">{facts.map((f) => <span key={f}>{f}</span>)}</div>}
+        {info?.primary_muscles?.length > 0 && <div className="muscles"><small>Músculos principales</small><div className="tags">{info.primary_muscles.map((m: string) => <span key={m}>{muscleLabel(m)}</span>)}</div></div>}
+        {info?.secondary_muscles?.length > 0 && <div className="muscles"><small>Secundarios</small><div className="tags">{info.secondary_muscles.map((m: string) => <span key={m} className="muted-tag">{muscleLabel(m)}</span>)}</div></div>}
+        <button className="btn primary wide lg" onClick={() => navigate("/entrenar", { state: { exercise: { id: data.exercise.id, name } } })}><Dumbbell size={18} /> Entrenar este ejercicio</button>
+      </section>
     </div>
+    {steps.length > 0 && <section className="panel chart-panel">
+      <div className="section-head"><h3>Cómo se hace</h3>{inEnglish && <span className="pill">En inglés</span>}</div>
+      {inEnglish && !showEnglish ? <div className="english-note"><p className="hint">Todavía no tenemos las instrucciones de este ejercicio en español.</p><button type="button" className="btn secondary" onClick={() => setShowEnglish(true)}>Ver en inglés</button></div>
+        : <ol className="steps">{steps.map((step, i) => <li key={i}><span>{i + 1}</span><p>{step}</p></li>)}</ol>}
+    </section>}
+    <h2 className="section-title">Tu progreso</h2>
     <div className="stats">
       <Stat label="Mejor peso" icon={<Trophy size={16} />} value={kg(data.summary.best_weight)} unit="kg" />
       <Stat label="1RM estimado" icon={<TrendingUp size={16} />} tone="blue" value={kg(data.summary.best_1rm)} unit="kg" />
@@ -493,7 +632,6 @@ function Progress() {
     {data.sessions.length > 0 && <section className="panel"><div className="section-head"><h3>Sesiones</h3></div><div className="list">{data.sessions.slice().reverse().map((s: any) => <div className="row" key={s.date}><span className="row-main">{longDate(s.date)}<small>Volumen {kg(Math.round(s.volume))} kg</small></span><strong>{kg(s.best_weight)} <span>kg</span></strong></div>)}</div></section>}
   </>;
 }
-
 function Notice({ state }: { state: { ok: boolean; text: string } | null }) {
   if (!state) return null;
   return state.ok ? <div className="toast"><Check size={15} /> {state.text}</div> : <div className="error inline">{state.text}</div>;
@@ -638,6 +776,8 @@ function App() {
       <Route path="/ejercicios" element={<Exercises />} />
       <Route path="/ejercicio" element={<Progress />} />
       <Route path="/entrenar" element={<WorkoutRecorder />} />
+      <Route path="/rutinas" element={<Routines />} />
+      <Route path="/rutina" element={<RoutineEditor />} />
       <Route path="/entrenamientos" element={<Workouts />} />
       <Route path="/entrenamiento" element={<WorkoutDetail />} />
       <Route path="/peso" element={<BodyWeight />} />

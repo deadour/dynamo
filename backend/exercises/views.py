@@ -34,7 +34,14 @@ class ExerciseViewSet(viewsets.ModelViewSet):
         from workouts.models import WorkoutExercise
         done = WorkoutExercise.objects.filter(workout__user=request.user)
         frequent = list(done.values("exercise").annotate(times=Count("workout", distinct=True), last=Max("workout__started_at")).order_by("-times", "-last")[:8])
-        exercises = {str(e.id): e for e in Exercise.objects.filter(id__in=[row["exercise"] for row in frequent])}
+        # Últimos ejercicios distintos, del entrenamiento más reciente hacia atrás
+        recent_ids = []
+        for exercise_id in done.order_by("-workout__started_at", "-order").values_list("exercise", flat=True)[:200]:
+            if exercise_id not in recent_ids:
+                recent_ids.append(exercise_id)
+            if len(recent_ids) == 8:
+                break
+        exercises = {str(e.id): e for e in Exercise.objects.filter(id__in=[row["exercise"] for row in frequent] + recent_ids)}
         # Última vez que se entrenó cada músculo principal
         last_by_muscle = {}
         for row in done.values("exercise__primary_muscles", "workout__started_at").order_by("-workout__started_at")[:300]:
@@ -42,5 +49,6 @@ class ExerciseViewSet(viewsets.ModelViewSet):
                 last_by_muscle.setdefault(muscle, row["workout__started_at"])
         return Response({
             "frequent": [{**ExerciseSerializer(exercises[str(row["exercise"])]).data, "times": row["times"], "last_done": row["last"]} for row in frequent if str(row["exercise"]) in exercises],
+            "recent": [ExerciseSerializer(exercises[str(i)]).data for i in recent_ids if str(i) in exercises],
             "muscles_last_trained": last_by_muscle,
         })

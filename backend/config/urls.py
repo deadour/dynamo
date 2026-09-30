@@ -9,7 +9,7 @@ from rest_framework.routers import DefaultRouter
 from users.views import AuthViewSet, avatar_image
 from users.admin_views import AdminUserViewSet
 from exercises.views import ExerciseViewSet
-from workouts.views import WorkoutViewSet, WorkoutExerciseViewSet, WorkoutSetViewSet
+from workouts.views import RoutineViewSet, WorkoutViewSet, WorkoutExerciseViewSet, WorkoutSetViewSet
 from bodymetrics.views import BodyWeightViewSet
 from progress.views import dashboard, exercise_progress
 
@@ -20,6 +20,7 @@ router.register("workouts", WorkoutViewSet, basename="workout")
 router.register("workout-exercises", WorkoutExerciseViewSet, basename="workout-exercise")
 router.register("workout-sets", WorkoutSetViewSet, basename="workout-set")
 router.register("body-weight", BodyWeightViewSet, basename="body-weight")
+router.register("routines", RoutineViewSet, basename="routine")
 router.register("admin/users", AdminUserViewSet, basename="admin-user")
 @require_GET
 def health(request):

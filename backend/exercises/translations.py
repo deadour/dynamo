@@ -3,6 +3,7 @@ from functools import lru_cache
 from pathlib import Path
 
 NAMES_FILE = Path(__file__).parent / "data" / "names_es.json"
+INSTRUCTIONS_FILE = Path(__file__).parent / "data" / "instructions_es.json"
 
 # Respaldo para nombres que no están en names_es.json (por ej. ejercicios nuevos del dataset).
 EXERCISE_NAMES_ES = {
@@ -52,3 +53,14 @@ def spanish_exercise_name(name):
         return _names()[name]
     normalized = " ".join(name.lower().replace("_", " ").replace("-", " ").split())
     return EXERCISE_NAMES_ES.get(normalized, name)
+
+
+@lru_cache(maxsize=1)
+def _instructions():
+    with open(INSTRUCTIONS_FILE, encoding="utf-8") as source:
+        return json.load(source)
+
+
+def spanish_instructions(name):
+    """Instrucciones en español (solo los ejercicios más comunes están traducidos)."""
+    return _instructions().get(name, [])

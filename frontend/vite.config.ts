@@ -4,7 +4,7 @@ import { copyFileSync, mkdirSync } from 'node:fs'; import { join } from 'node:pa
 // Rutas de la app. El hosting estático no conoce las rutas de React: sin un archivo real en cada una,
 // recargar la página da "Not Found". Se copia index.html en cada ruta (y como 404.html de respaldo).
 // Las pantallas con ID usan ?id=..., así la ruta sigue siendo fija y recargan igual.
-export const APP_ROUTES = ["ingresar", "inicio", "ejercicios", "ejercicio", "entrenar", "entrenamientos", "entrenamiento", "peso", "perfil", "admin", "admin/usuario"];
+export const APP_ROUTES = ["ingresar", "inicio", "ejercicios", "ejercicio", "entrenar", "entrenamientos", "entrenamiento", "peso", "perfil", "rutinas", "rutina", "admin", "admin/usuario"];
 
 function spaRoutes(): Plugin {
   let outDir = "dist";

@@ -46,3 +46,20 @@ def test_suggestions_return_frequent_exercises_and_last_trained_muscles():
     assert [(item["name"], item["times"]) for item in data["frequent"]] == [("Bench Press", 2), ("Barbell Row", 1)]
     assert data["muscles_last_trained"]["chest"].startswith("2026-01-03")
     assert data["muscles_last_trained"]["middle back"].startswith("2026-01-02")
+
+
+@pytest.mark.django_db
+def test_import_stores_spanish_names_instructions_and_details(tmp_path):
+    import json
+    from django.core.management import call_command
+    dataset = [{"id": "Barbell_Curl", "name": "Barbell Curl", "force": "pull", "mechanic": "isolation", "level": "beginner", "equipment": "barbell", "category": "strength", "primaryMuscles": ["biceps"], "secondaryMuscles": ["forearms"], "instructions": ["Stand up."], "images": ["Barbell_Curl/0.jpg", "Barbell_Curl/1.jpg"]}]
+    source = tmp_path / "exercises.json"
+    source.write_text(json.dumps(dataset), encoding="utf-8")
+
+    call_command("import_exercises", file=str(source))
+
+    exercise = Exercise.objects.get(external_id="Barbell_Curl")
+    assert exercise.name_es == "Curl de bíceps con barra"
+    assert (exercise.force, exercise.mechanic) == ("pull", "isolation")
+    assert exercise.instructions_es[0].startswith("Parate derecho")
+    assert exercise.image_2.endswith("Barbell_Curl/1.jpg")

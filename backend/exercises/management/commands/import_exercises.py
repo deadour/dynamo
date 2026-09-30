@@ -5,7 +5,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils.text import slugify
 
 from exercises.models import Exercise
-from exercises.translations import spanish_exercise_name
+from exercises.translations import spanish_exercise_name, spanish_instructions
 
 DATASET_URL = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/dist/exercises.json"
 IMAGE_BASE_URL = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/"
@@ -40,7 +40,7 @@ class Command(BaseCommand):
             raise CommandError(f"No se pudo leer el dataset: {exc}") from exc
 
         created = updated = skipped = errors = 0
-        fields = ["name", "name_es", "slug", "category", "primary_muscles", "secondary_muscles", "equipment", "difficulty", "instructions", "image_1", "image_2", "source", "source_url"]
+        fields = ["name", "name_es", "slug", "category", "primary_muscles", "secondary_muscles", "equipment", "difficulty", "force", "mechanic", "instructions", "instructions_es", "image_1", "image_2", "source", "source_url"]
         existing = {item.external_id: item for item in Exercise.objects.filter(external_id__isnull=False)}
         new_items = []
         changed_items = []
@@ -61,7 +61,10 @@ class Command(BaseCommand):
                     "secondary_muscles": row.get("secondaryMuscles") or [],
                     "equipment": row.get("equipment") or "",
                     "difficulty": row.get("level") or "",
+                    "force": row.get("force") or "",
+                    "mechanic": row.get("mechanic") or "",
                     "instructions": row.get("instructions") or [],
+                    "instructions_es": spanish_instructions(name),
                     "image_1": self._image_url(images[0]) if images else "",
                     "image_2": self._image_url(images[1]) if len(images) > 1 else "",
                     "source": "free-exercise-db",
