@@ -243,12 +243,13 @@ function Dashboard() {
   const [data, setData] = useState<any>(); const [routines, setRoutines] = useState<any[]>([]); const user = useContext(UserContext); const navigate = useNavigate();
   const active = JSON.parse(localStorage.getItem(ACTIVE_KEY) || "null"); const elapsed = useElapsed(active?.started_at);
   useEffect(() => { void api("/api/dashboard/summary/").then(setData); void api("/api/routines/").then((d) => setRoutines((d.results || d).filter((r: any) => r.items.length).slice(0, 3))).catch(() => undefined); }, []);
-  const hour = new Date().getHours(); const greeting = hour < 12 ? "Buen día" : hour < 20 ? "Buenas tardes" : "Buenas noches";
+  // Saludo según la hora de Argentina (aunque el celu esté en otra zona horaria).
+  const hour = Number(new Intl.DateTimeFormat("es-AR", { hour: "numeric", hourCycle: "h23", timeZone: "America/Argentina/Buenos_Aires" }).format(new Date())); const greeting = hour >= 5 && hour < 13 ? "Buen día" : hour >= 13 && hour < 20 ? "Buenas tardes" : "Buenas noches";
   const firstName = (user?.name || "").split(" ")[0];
   const history = data?.weight_history || [];
   const delta = history.length > 1 ? history[history.length - 1].weight_kg - history[0].weight_kg : null;
   return <>
-    <PageHead eyebrow={new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })} title={<>{greeting}{firstName && <>, <span className="accent">{firstName}</span></>}</>} />
+    <PageHead eyebrow={new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Argentina/Buenos_Aires" })} title={<>{greeting}{firstName && <>, <span className="accent">{firstName}</span></>}</>} />
     <section className={`train-hero ${active ? "live" : ""}`}>
       {active ? <>
         <div><small><span className="live-dot" /> Entrenamiento en curso</small><h2>{active.routine?.name || "Entrenamiento libre"}</h2><p className="hero-timer">{elapsed}</p></div>
