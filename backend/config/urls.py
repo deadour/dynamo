@@ -6,7 +6,8 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.middleware.csrf import get_token
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.routers import DefaultRouter
-from users.views import AuthViewSet
+from users.views import AuthViewSet, avatar_image
+from users.admin_views import AdminUserViewSet
 from exercises.views import ExerciseViewSet
 from workouts.views import WorkoutViewSet, WorkoutExerciseViewSet, WorkoutSetViewSet
 from bodymetrics.views import BodyWeightViewSet
@@ -19,6 +20,7 @@ router.register("workouts", WorkoutViewSet, basename="workout")
 router.register("workout-exercises", WorkoutExerciseViewSet, basename="workout-exercise")
 router.register("workout-sets", WorkoutSetViewSet, basename="workout-set")
 router.register("body-weight", BodyWeightViewSet, basename="body-weight")
+router.register("admin/users", AdminUserViewSet, basename="admin-user")
 @require_GET
 def health(request):
     return JsonResponse({"status": "ok"})
@@ -36,4 +38,4 @@ def readiness(request):
 def csrf(request):
     return JsonResponse({"status": "ok", "csrfToken": get_token(request)})
 
-urlpatterns = [path("health/", health), path("readiness/", readiness), path("csrf/", csrf), path("api/", include(router.urls)), path("api/dashboard/summary/", dashboard), path("api/progress/exercises/<uuid:exercise_id>/", exercise_progress), path("api/schema/", SpectacularAPIView.as_view()), path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"))]
+urlpatterns = [path("health/", health), path("readiness/", readiness), path("csrf/", csrf), path("api/", include(router.urls)), path("api/avatars/<uuid:user_id>/", avatar_image, name="user-avatar"), path("api/dashboard/summary/", dashboard), path("api/progress/exercises/<uuid:exercise_id>/", exercise_progress), path("api/schema/", SpectacularAPIView.as_view()), path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"))]

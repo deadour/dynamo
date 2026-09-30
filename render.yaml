@@ -25,6 +25,8 @@ services:
         sync: false
       - key: IMPORT_EXERCISES_ON_START
         value: "1"
+      - key: ADMIN_EMAILS
+        sync: false
   - type: web
     name: dynamo-frontend
     env: static
