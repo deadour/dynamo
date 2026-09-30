@@ -153,3 +153,33 @@ También verificar:
 - [ ] No existen secretos en Git.
 - [ ] `DEBUG=0` en producción.
 - [ ] El login de desarrollo está deshabilitado en producción.
+
+## 8. Cargar el catálogo de ejercicios en Render
+
+No ejecutes este comando en tu computadora si querés cargar la base Neon de producción. Ejecutalo dentro del servicio backend de Render.
+
+1. Abrí el servicio backend en Render.
+2. Entrá a **Shell**.
+3. Ejecutá:
+
+```bash
+cd /app
+python manage.py migrate --noinput
+python manage.py import_exercises
+```
+
+El importador descarga el JSON oficial, guarda nombres, músculos, instrucciones y URLs de imágenes. Es idempotente: si lo ejecutás otra vez actualiza los ejercicios existentes y no los duplica.
+
+Salida esperada:
+
+```text
+creados=... actualizados=... omitidos=... errores=0
+```
+
+Si el plan de Render no incluye Shell, crear temporalmente un servicio/job usando la misma imagen del backend y ejecutar:
+
+```bash
+python manage.py import_exercises
+```
+
+No agregamos este comando al arranque normal porque el servidor no debería depender de una descarga externa para iniciar.
