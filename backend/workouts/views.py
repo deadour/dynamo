@@ -82,6 +82,24 @@ class RoutineViewSet(viewsets.ModelViewSet):
             routine.save(update_fields=["share_token"])
         return Response({"token": str(routine.share_token)})
 
+    # Agregar / sacar un ejercicio suelto (como sumar una canción a una playlist) sin reemplazar la lista.
+    @action(detail=True, methods=["post"], url_path="items")
+    def add_item(self, request, pk=None):
+        routine = self.get_object()
+        exercise = Exercise.objects.filter(active=True).filter(Q(is_custom=False) | Q(created_by=request.user), id=request.data.get("exercise")).first()
+        if exercise is None:
+            return Response({"detail": "Ejercicio no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+        if not routine.items.filter(exercise=exercise).exists():
+            last = routine.items.order_by("-order").values_list("order", flat=True).first()
+            RoutineExercise.objects.create(routine=routine, exercise=exercise, order=(last or 0) + 1, target_sets=3, target_reps="10")
+        return Response(RoutineSerializer(self.get_queryset().get(pk=routine.pk), context={"request": request}).data)
+
+    @action(detail=True, methods=["delete"], url_path=r"items/(?P<exercise_id>[^/.]+)")
+    def remove_item(self, request, pk=None, exercise_id=None):
+        routine = self.get_object()
+        routine.items.filter(exercise_id=exercise_id).delete()
+        return Response(RoutineSerializer(self.get_queryset().get(pk=routine.pk), context={"request": request}).data)
+
 
 @api_view(["GET"])
 @permission_classes([AllowAny])

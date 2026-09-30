@@ -10,4 +10,12 @@ class User(AbstractBaseUser, PermissionsMixin):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField(unique=True); name = models.CharField(max_length=120, blank=True); avatar_url = models.URLField(blank=True); avatar_public_id = models.CharField(max_length=255, blank=True); avatar = models.BinaryField(null=True, blank=True, editable=False); avatar_type = models.CharField(max_length=20, blank=True); google_sub = models.CharField(max_length=255, blank=True, unique=True, null=True)
     is_active = models.BooleanField(default=True); is_staff = models.BooleanField(default=False); created_at = models.DateTimeField(auto_now_add=True); updated_at = models.DateTimeField(auto_now=True)
+    search_name = models.CharField(max_length=255, blank=True, editable=False)  # nombre + usuario del email, sin tildes
     objects = UserManager(); USERNAME_FIELD = "email"
+
+    def save(self, *args, **kwargs):
+        from search_utils import normalize
+        self.search_name = normalize(f"{self.name} {self.email.split('@')[0]}")
+        if kwargs.get("update_fields") is not None:
+            kwargs["update_fields"] = set(kwargs["update_fields"]) | {"search_name"}
+        super().save(*args, **kwargs)

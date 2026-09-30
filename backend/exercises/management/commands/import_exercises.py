@@ -6,6 +6,7 @@ from django.utils.text import slugify
 
 from exercises.models import Exercise
 from exercises.translations import spanish_exercise_name, spanish_instructions
+from search_utils import normalize
 
 DATASET_URL = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/dist/exercises.json"
 IMAGE_BASE_URL = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/"
@@ -40,7 +41,7 @@ class Command(BaseCommand):
             raise CommandError(f"No se pudo leer el dataset: {exc}") from exc
 
         created = updated = skipped = errors = 0
-        fields = ["name", "name_es", "slug", "category", "primary_muscles", "secondary_muscles", "equipment", "difficulty", "force", "mechanic", "instructions", "instructions_es", "image_1", "image_2", "source", "source_url"]
+        fields = ["name", "name_es", "search_text", "slug", "category", "primary_muscles", "secondary_muscles", "equipment", "difficulty", "force", "mechanic", "instructions", "instructions_es", "image_1", "image_2", "source", "source_url"]
         existing = {item.external_id: item for item in Exercise.objects.filter(external_id__isnull=False)}
         new_items = []
         changed_items = []
@@ -55,6 +56,7 @@ class Command(BaseCommand):
                 defaults = {
                     "name": name,
                     "name_es": spanish_exercise_name(name),
+                    "search_text": normalize(f"{spanish_exercise_name(name)} {name}"),
                     "slug": slugify(name),
                     "category": row.get("category") or "",
                     "primary_muscles": row.get("primaryMuscles") or [],

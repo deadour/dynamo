@@ -166,3 +166,13 @@ def test_suggestions_order_by_my_usage_then_everyone_then_common_gym_exercises()
 
     assert order == ["Fondos", "Aperturas", "Press banca", "Cruce poleas", "Aaa raro"]
     assert client.get("/api/exercises/?muscle=chest").json()["results"][0]["times"] == 2
+
+
+@pytest.mark.django_db
+def test_exercise_search_ignores_accents():
+    user = User.objects.create_user("acentos@example.com")
+    Exercise.objects.create(name="Barbell Curl", name_es="Curl de bíceps con barra", slug="curl")
+    client = APIClient()
+    client.force_authenticate(user=user)
+    assert [r["name"] for r in client.get("/api/exercises/?search=biceps").json()["results"]] == ["Barbell Curl"]
+    assert [r["name"] for r in client.get("/api/exercises/?search=BÍCEPS").json()["results"]] == ["Barbell Curl"]

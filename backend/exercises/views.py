@@ -11,6 +11,8 @@ from rest_framework.permissions import AllowAny
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from search_utils import normalize
+
 from .models import Exercise
 from bodymetrics.views import ImageParser, detect_image_type
 from media_utils import delete_image, upload_image
@@ -27,7 +29,7 @@ class ExerciseViewSet(viewsets.ModelViewSet):
         params = self.request.query_params
         if params.get("search"):
             term = params["search"].strip()
-            q = q.filter(Q(name__icontains=term) | Q(name_es__icontains=term))
+            q = q.filter(search_text__contains=normalize(term))
         if params.get("category"): q = q.filter(category__iexact=params["category"])
         if params.get("exclude_category"): q = q.exclude(category__in=[c.strip() for c in params["exclude_category"].split(",")])
         if params.get("equipment"): q = q.filter(equipment__iexact=params["equipment"])

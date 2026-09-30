@@ -15,6 +15,7 @@ from rest_framework.response import Response
 
 from bodymetrics.views import ImageParser, detect_image_type
 from media_utils import delete_image, upload_image
+from search_utils import normalize
 from users.models import User
 from workouts.models import Workout
 
@@ -159,7 +160,7 @@ class ProfileViewSet(viewsets.ReadOnlyModelViewSet):
         if term:
             if len(term) < 2:
                 return Response([])
-            people = self.get_queryset().filter(Q(name__icontains=term) | Q(email__iexact=term)).exclude(id=me.id).order_by("name")[:20]
+            people = self.get_queryset().filter(Q(search_name__contains=normalize(term)) | Q(email__iexact=term)).exclude(id=me.id).order_by("name")[:20]
         elif tab == "followers":
             people = self.get_queryset().filter(id__in=followers)
         elif tab == "following":

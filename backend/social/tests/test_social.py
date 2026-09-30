@@ -157,3 +157,10 @@ def test_likes_are_grouped_in_one_notification_per_post(people):
     client_for(edu).post(f"/api/posts/{post['id']}/like/")  # like propio: sin aviso
     likes = [n for n in client_for(edu).get("/api/notifications/").json() if n["kind"] == "like"]
     assert len(likes) == 1 and likes[0]["text"] == "A Tomi y 1 más les gustó tu publicación"
+
+
+@pytest.mark.django_db
+def test_people_search_ignores_accents_and_case(people):
+    User.objects.create_user("tomas.g@example.com", name="Tomás Guzmán")
+    names = {p["name"] for p in client_for(people["edu"]).get("/api/profiles/?search=TOMAS guz").json()}
+    assert names == {"Tomás Guzmán"}

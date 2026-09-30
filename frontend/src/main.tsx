@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Activity, ArrowLeft, Bell, Camera, CalendarDays, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Dumbbell, Flame, Globe, Heart, History, Home, ImagePlus, ListChecks, LogOut, MessageCircle, Pencil, Plus, Save, Scale, Search, Send, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Timer, Trash2, TrendingDown, TrendingUp, Trophy, UserRound, Users, X } from "lucide-react";
+import { Activity, ArrowLeft, Bell, Camera, CalendarDays, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Dumbbell, Flame, Globe, Heart, History, Home, ImagePlus, ListChecks, ListPlus, LogOut, MessageCircle, Pencil, Plus, Save, Scale, Search, Send, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Timer, Trash2, TrendingDown, TrendingUp, Trophy, UserRound, Users, X } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import "./styles.css";
 
@@ -493,7 +493,7 @@ function ShareWorkoutSheet({ workoutId, onClose }: { workoutId: string; onClose:
 }
 
 function Exercises() {
-  const [items, setItems] = useState<any[]>([]); const [loaded, setLoaded] = useState(false); const [query, setQuery] = useState(""); const [equipment, setEquipment] = useState(""); const [difficulty, setDifficulty] = useState(""); const [group, setGroup] = useState(""); const [creating, setCreating] = useState(false); const navigate = useNavigate(); const [tab, setTab] = useState<"mine" | "all">("mine"); const [showFilters, setShowFilters] = useState(false);
+  const [items, setItems] = useState<any[]>([]); const [loaded, setLoaded] = useState(false); const [query, setQuery] = useState(""); const [equipment, setEquipment] = useState(""); const [difficulty, setDifficulty] = useState(""); const [group, setGroup] = useState(""); const [creating, setCreating] = useState(false); const navigate = useNavigate(); const [tab, setTab] = useState<"mine" | "all">("mine"); const [showFilters, setShowFilters] = useState(false); const [saveTarget, setSaveTarget] = useState<any>(null);
   const load = (which = tab) => { const params = new URLSearchParams({ search: query.trim() }); if (which === "mine") params.set("mine", "1"); const muscles = GROUPS.find((g) => g.key === group)?.muscles; if (muscles) params.set("muscle", muscles.join(",")); if (equipment) params.set("equipment", equipment); if (difficulty) params.set("difficulty", difficulty); void api(`/api/exercises/?${params}`).then((d) => { const rows = d.results || d; setItems(rows); setLoaded(true); if (which === "mine" && !rows.length && !query.trim() && !group && !equipment && !difficulty && !loaded) switchTab("all"); }); };
   const switchTab = (next: "mine" | "all") => { setTab(next); load(next); };
   useEffect(() => load(), []);
@@ -519,8 +519,9 @@ function Exercises() {
         {activeFilters > 0 && <button type="button" className="link-btn" onClick={() => { setGroup(""); setEquipment(""); setDifficulty(""); }}>Limpiar filtros</button>}
       </div>}
     </div>
+    {saveTarget && <SaveToRoutineSheet exercise={saveTarget} onClose={() => setSaveTarget(null)} />}
     <div className="exercise-grid">{items.map((item) => <Link className="exercise" to={`/ejercicio?id=${item.id}`} key={item.id}>
-      <div className="exercise-media">{item.image_1 ? <img src={item.image_1} alt="" loading="lazy" /> : <div className="image-placeholder"><Dumbbell /></div>}{item.times > 0 && <span className="badge times">{item.times}×</span>}{item.is_custom && <span className="badge custom">Propio</span>}{!item.is_custom && item.difficulty && <span className={`badge lvl-${item.difficulty.toLowerCase()}`}>{LEVELS[item.difficulty.toLowerCase()] || item.difficulty}</span>}</div>
+      <div className="exercise-media">{item.image_1 ? <img src={item.image_1} alt="" loading="lazy" /> : <div className="image-placeholder"><Dumbbell /></div>}{item.times > 0 && <span className="badge times">{item.times}×</span>}<button type="button" className="save-ex" aria-label={`Guardar ${exerciseName(item)} en una rutina`} title="Guardar en rutina" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSaveTarget({ id: item.id, name: exerciseName(item) }); }}><ListPlus size={17} /></button>{item.is_custom && <span className="badge custom">Propio</span>}{!item.is_custom && item.difficulty && <span className={`badge lvl-${item.difficulty.toLowerCase()}`}>{LEVELS[item.difficulty.toLowerCase()] || item.difficulty}</span>}</div>
       <div className="exercise-body">
         <b>{item.name_es || item.name}</b>
         {item.name_es && item.name_es !== item.name && <small className="original-name">{item.name}</small>}
@@ -919,6 +920,39 @@ function BodyWeight() {
   </>;
 }
 
+// Guardar un ejercicio en rutinas, como sumar una canción a playlists: tildás o destildás.
+function SaveToRoutineSheet({ exercise, onClose }: { exercise: { id: string; name: string }; onClose: () => void }) {
+  const [routines, setRoutines] = useState<any[] | null>(null); const [busy, setBusy] = useState(""); const [newName, setNewName] = useState(""); const [creating, setCreating] = useState(false); const [error, setError] = useState("");
+  useEffect(() => { void api("/api/routines/").then((d) => setRoutines(d.results || d)); }, []);
+  useEffect(() => { const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose(); window.addEventListener("keydown", esc); return () => window.removeEventListener("keydown", esc); }, []);
+  const has = (r: any) => r.items.some((it: any) => it.exercise === exercise.id);
+  const toggle = (r: any) => {
+    setBusy(r.id); setError("");
+    const req = has(r) ? api(`/api/routines/${r.id}/items/${exercise.id}/`, { method: "DELETE" }) : api(`/api/routines/${r.id}/items/`, { method: "POST", body: JSON.stringify({ exercise: exercise.id }) });
+    void req.then((updated) => { setRoutines((old) => (old || []).map((x) => x.id === r.id ? updated : x)); if (!has(r)) toast(`Agregado a «${r.name}»`, "✅"); }).catch((e: Error) => setError(e.message)).finally(() => setBusy(""));
+  };
+  const create = () => {
+    if (!newName.trim()) return setError("Ponele un nombre a la rutina.");
+    void api("/api/routines/", { method: "POST", body: JSON.stringify({ name: newName.trim(), items: [{ exercise: exercise.id, target_sets: 3, target_reps: "10" }] }) })
+      .then((r) => { setRoutines((old) => [r, ...(old || [])]); setNewName(""); setCreating(false); toast(`Creaste «${r.name}»`, "✅"); }).catch((e: Error) => setError(e.message));
+  };
+  return <div className="sheet-backdrop" onClick={onClose}><div className="sheet" role="dialog" aria-modal="true" aria-label="Guardar en rutina" onClick={(e) => e.stopPropagation()}>
+    <div className="sheet-head"><div><h3>Guardar en rutina</h3><small className="sheet-sub">{exercise.name}</small></div><IconButton label="Cerrar" onClick={onClose}><X size={16} /></IconButton></div>
+    <div className="sheet-body">
+      {creating ? <div className="new-routine"><input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && create()} placeholder="Nombre, ej: Pecho y tríceps" /><button type="button" className="btn primary" onClick={create}>Crear</button></div>
+        : <button type="button" className="routine-pick new" onClick={() => setCreating(true)}><span className="rp-icon"><Plus size={18} /></span><span className="rp-main">Nueva rutina</span></button>}
+      {routines === null ? <p className="hint">Cargando rutinas…</p> : routines.map((r) => { const on = has(r); return <button type="button" key={r.id} className={`routine-pick ${on ? "on" : ""}`} onClick={() => toggle(r)} disabled={busy === r.id} aria-pressed={on}>
+        <span className="thumb-stack">{r.items.slice(0, 2).map((it: any) => <ExerciseThumb key={it.id} src={it.image} size={32} />)}{!r.items.length && <span className="rp-icon"><ListChecks size={16} /></span>}</span>
+        <span className="rp-main">{r.name}<small>{r.items.length} {r.items.length === 1 ? "ejercicio" : "ejercicios"}</small></span>
+        <span className="rp-check">{on ? <Check size={16} /> : <Plus size={16} />}</span>
+      </button>; })}
+      {routines?.length === 0 && !creating && <p className="hint">Todavía no tenés rutinas: creá la primera con este ejercicio.</p>}
+      {error && <div className="error inline">{error}</div>}
+    </div>
+    <div className="sheet-foot single"><button className="btn primary" onClick={onClose}>Listo</button></div>
+  </div></div>;
+}
+
 function ExerciseImages({ images, name }: { images: string[]; name: string }) {
   const [frame, setFrame] = useState(0);
   useEffect(() => { if (images.length < 2) return; const t = setInterval(() => setFrame((f) => (f + 1) % images.length), 1100); return () => clearInterval(t); }, [images.length]);
@@ -926,7 +960,7 @@ function ExerciseImages({ images, name }: { images: string[]; name: string }) {
   return <div className="exercise-hero">{images.map((src, i) => <img key={src} src={src} alt={i === 0 ? name : ""} className={i === frame ? "on" : ""} />)}{images.length > 1 && <span className="hero-hint"><Activity size={13} /> Inicio y final del movimiento</span>}</div>;
 }
 function Progress() {
-  const id = useIdParam(); const navigate = useNavigate(); const me = useContext(UserContext); const [data, setData] = useState<any>(); const [info, setInfo] = useState<any>(); const [showEnglish, setShowEnglish] = useState(false); const [editing, setEditing] = useState(false);
+  const id = useIdParam(); const navigate = useNavigate(); const me = useContext(UserContext); const [data, setData] = useState<any>(); const [info, setInfo] = useState<any>(); const [showEnglish, setShowEnglish] = useState(false); const [editing, setEditing] = useState(false); const [saving, setSaving] = useState(false);
   const load = () => { void api(`/api/progress/exercises/${id}/`).then(setData); void api(`/api/exercises/${id}/`).then(setInfo).catch(() => undefined); };
   useEffect(load, [id]);
   if (!data) return <Loading label="Cargando ejercicio…" />;
@@ -936,6 +970,7 @@ function Progress() {
   const inEnglish = !!info && !info.instructions_es?.length && steps.length > 0;
   return <>
     <PageHead back="/ejercicios" eyebrow={info?.is_custom ? "Ejercicio propio" : "Ejercicio"} title={name} action={info?.is_custom && info.created_by === me?.id ? <div className="line-actions"><IconButton label="Editar ejercicio" onClick={() => setEditing(true)}><Pencil size={15} /></IconButton><ConfirmButton iconOnly label="Borrar ejercicio" confirmLabel="¿Borrar?" onConfirm={() => void api(`/api/exercises/${id}/`, { method: "DELETE" }).then(() => navigate("/ejercicios"))} /></div> : undefined} />
+    {saving && <SaveToRoutineSheet exercise={{ id: data.exercise.id, name }} onClose={() => setSaving(false)} />}
     {editing && <CustomExerciseSheet initial={info} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); load(); }} />}
     {data.exercise.name_original && data.exercise.name_original !== name && <p className="original-title">{data.exercise.name_original}</p>}
     <div className="exercise-detail">
@@ -944,7 +979,7 @@ function Progress() {
         {facts.length > 0 && <div className="fact-chips">{facts.map((f) => <span key={f}>{f}</span>)}</div>}
         {info?.primary_muscles?.length > 0 && <div className="muscles"><small>Músculos principales</small><div className="tags">{info.primary_muscles.map((m: string) => <span key={m}>{muscleLabel(m)}</span>)}</div></div>}
         {info?.secondary_muscles?.length > 0 && <div className="muscles"><small>Secundarios</small><div className="tags">{info.secondary_muscles.map((m: string) => <span key={m} className="muted-tag">{muscleLabel(m)}</span>)}</div></div>}
-        <button className="btn primary wide lg" onClick={() => navigate("/entrenar", { state: { exercise: { id: data.exercise.id, name } } })}><Dumbbell size={18} /> Entrenar este ejercicio</button>
+        <div className="detail-actions"><button className="btn primary lg" onClick={() => navigate("/entrenar", { state: { exercise: { id: data.exercise.id, name } } })}><Dumbbell size={18} /> Entrenar</button><button className="btn secondary lg" onClick={() => setSaving(true)}><ListPlus size={18} /> Guardar en rutina</button></div>
       </section>
     </div>
     {steps.length > 0 && <section className="panel chart-panel">

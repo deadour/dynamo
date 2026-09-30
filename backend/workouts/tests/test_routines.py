@@ -89,3 +89,20 @@ def test_importing_shared_routine_copies_foreign_custom_exercises(setup):
     assert exercise_ids[0] == str(bench.id)
     assert exercise_ids[1] != custom["id"]
     assert friend_client.get(f"/api/exercises/{exercise_ids[1]}/").json()["name"] == "Remo Hammer"
+
+
+@pytest.mark.django_db
+def test_add_and_remove_single_exercise_like_a_playlist(setup):
+    user, client, bench, row = setup
+    routine = client.post("/api/routines/", {"name": "Empuje", "items": [{"exercise": str(bench.id)}]}, format="json").json()
+    added = client.post(f"/api/routines/{routine['id']}/items/", {"exercise": str(row.id)}, format="json").json()
+    assert [i["exercise"] for i in added["items"]] == [str(bench.id), str(row.id)]
+    again = client.post(f"/api/routines/{routine['id']}/items/", {"exercise": str(row.id)}, format="json").json()
+    assert len(again["items"]) == 2  # no se duplica
+    removed = client.delete(f"/api/routines/{routine['id']}/items/{bench.id}/").json()
+    assert [i["exercise"] for i in removed["items"]] == [str(row.id)]
+
+    other = User.objects.create_user("ajeno@example.com")
+    intruder = APIClient()
+    intruder.force_authenticate(user=other)
+    assert intruder.post(f"/api/routines/{routine['id']}/items/", {"exercise": str(bench.id)}, format="json").status_code == 404
