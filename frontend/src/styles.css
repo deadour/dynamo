@@ -825,6 +825,31 @@ input[type="date"]::-webkit-datetime-edit { padding: 0; }
 .detail-actions { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: auto; }
 .detail-actions .btn { margin: 0; }
 
+/* ---------- mapa de calor ---------- */
+.heatmap-panel, .profile-grid > *, .stack > * { min-width: 0; }
+.heat-stats { display: flex; gap: 22px; margin: -4px 0 14px; color: var(--muted); font-size: 12.5px; }
+.heat-stats span { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.heat-stats b { font-family: var(--display); font-size: 20px; color: var(--text); }
+.heat-scroll { overflow-x: auto; scrollbar-width: none; margin: 0 -4px; padding: 0 4px 2px; }
+.heat-scroll::-webkit-scrollbar { display: none; }
+.heat-grid { display: flex; gap: 3px; width: max-content; }
+.heat-week { display: grid; grid-template-rows: 14px repeat(7, 12px); gap: 3px; }
+.heat-month { font-size: 10px; color: var(--faint); white-space: nowrap; width: 12px; overflow: visible; text-transform: capitalize; }
+.heat-cell { display: block; width: 12px; height: 12px; padding: 0; border: 0; border-radius: 3px; background: var(--surface-3); cursor: pointer; transition: transform .12s, box-shadow .12s; }
+.heat-cell:hover { transform: scale(1.25); }
+.heat-cell.l1 { background: rgba(182, 243, 106, .28); }
+.heat-cell.l2 { background: rgba(182, 243, 106, .5); }
+.heat-cell.l3 { background: rgba(182, 243, 106, .75); }
+.heat-cell.l4 { background: var(--accent); }
+.heat-cell.picked { box-shadow: 0 0 0 2px var(--text); }
+.heat-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+.heat-picked { color: var(--muted); font-size: 12.5px; text-transform: none; }
+.heat-picked b { color: var(--text); font-weight: 600; }
+.heat-legend { display: flex; align-items: center; gap: 3px; color: var(--faint); font-size: 11px; }
+.heat-legend i { width: 10px; height: 10px; cursor: default; }
+.heat-legend i:first-of-type { margin-left: 4px; }
+.heat-legend i:last-of-type { margin-right: 4px; }
+
 /* ---------- responsive ---------- */
 @media (max-width: 860px) {
   .top-nav { display: none; }

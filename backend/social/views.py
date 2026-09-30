@@ -234,6 +234,8 @@ class ProfileViewSet(viewsets.ReadOnlyModelViewSet):
         if row["is_friend"] or row["is_me"]:
             workouts = Workout.objects.filter(user=person).prefetch_related("exercises__sets", "exercises__exercise")[:5]
             row["recent_workouts"] = [workout_summary(w) for w in workouts]
+            from workouts.views import training_days
+            row["calendar"] = training_days(person)
             routines = Routine.objects.filter(user=person).prefetch_related("items__exercise")
             saved = {} if row["is_me"] else dict(Routine.objects.filter(user=me, source__user=person).values_list("source_id", "id"))
             row["routines"] = [{

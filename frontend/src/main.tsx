@@ -493,6 +493,7 @@ function UserProfile() {
         <div className={`vs-bar them ${theirs > mine ? "lead" : ""}`}><i style={{ width: `${(theirs / max) * 100}%` }} /><span>{them}</span><b>{kg(theirs)}{unit && ` ${unit}`}</b></div>
       </div>; })}</div>
     </section>}
+    {p.calendar && <TrainingHeatmap entries={p.calendar} title={p.is_me ? "Tus días de entreno" : `Días de entreno de ${them}`} />}
     {p.routines?.length > 0 && <FriendRoutines person={p} />}
     {p.achievements.length > 0 && <section className="panel"><div className="section-head"><h3>Logros</h3><span className="pill">{p.achievements.length}</span></div><div className="badge-row">{p.achievements.map((a: any) => <span className="ach-badge" key={a.title} title={`${a.title}: ${a.description}`}><span>{a.icon}</span><small>{a.title}</small></span>)}</div></section>}
     {p.recent_workouts ? p.recent_workouts.length > 0 && <section className="panel"><div className="section-head"><h3>Últimos entrenamientos</h3></div><div className="stack tight">{p.recent_workouts.map((w: any, i: number) => <div key={i}><small className="field-label">{timeAgo(w.date)}</small><WorkoutCard w={w} /></div>)}</div></section>
@@ -877,11 +878,52 @@ function RoutineEditor() {
   </>;
 }
 
+// Mapa de calor de los días entrenados (como el de GitHub): semanas en columnas, de lunes a domingo.
+const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+function TrainingHeatmap({ entries, title = "Tus días de entreno" }: { entries: { started_at: string; sets: number }[]; title?: string }) {
+  const [picked, setPicked] = useState<{ date: Date; workouts: number; sets: number } | null>(null); const scroller = useRef<HTMLDivElement>(null);
+  const byDay = new Map<string, { workouts: number; sets: number }>();
+  for (const e of entries) { const k = dayKey(new Date(e.started_at)); const cur = byDay.get(k) || { workouts: 0, sets: 0 }; byDay.set(k, { workouts: cur.workouts + 1, sets: cur.sets + e.sets }); }
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const start = new Date(today); start.setDate(start.getDate() - ((today.getDay() + 6) % 7) - 52 * 7); // lunes de hace 52 semanas
+  const weeks: Date[][] = [];
+  for (let d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) { if (!weeks.length || weeks[weeks.length - 1].length === 7) weeks.push([]); weeks[weeks.length - 1].push(new Date(d)); }
+  const level = (sets: number, workouts: number) => !workouts ? 0 : sets >= 26 ? 4 : sets >= 18 ? 3 : sets >= 10 ? 2 : 1;
+  const trainedDays = [...byDay.keys()].filter((k) => { const [y, m, d] = k.split("-").map(Number); return new Date(y, m - 1, d) >= start; }).length;
+  // racha: semanas seguidas (hasta esta o la anterior) con al menos un entreno
+  const weekHas = weeks.map((w) => w.some((d) => byDay.has(dayKey(d))));
+  let streak = 0; for (let i = weekHas.length - (weekHas[weekHas.length - 1] ? 1 : 2); i >= 0 && weekHas[i]; i--) streak++;
+  useEffect(() => { if (scroller.current) scroller.current.scrollLeft = scroller.current.scrollWidth; }, [entries.length]);
+  const fmt = (d: Date) => d.toLocaleDateString("es-AR", { weekday: "short", day: "numeric", month: "short" });
+  return <section className="panel heatmap-panel">
+    <div className="section-head"><h3>{title}</h3><small className="hint">Último año</small></div>
+    <div className="heat-stats"><span><b>{trainedDays}</b>{trainedDays === 1 ? "día entrenado" : "días entrenados"}</span><span><b>{streak}</b>{streak === 1 ? "semana seguida" : "semanas seguidas"}</span></div>
+    <div className="heat-scroll" ref={scroller}>
+      <div className="heat-grid" role="img" aria-label={`${trainedDays} días entrenados en el último año`}>
+        {weeks.map((w, i) => <div className="heat-week" key={i}>
+          <span className="heat-month">{w[0].getDate() <= 7 ? w[0].toLocaleDateString("es-AR", { month: "short" }).replace(".", "") : ""}</span>
+          {w.map((d) => { const info = byDay.get(dayKey(d)) || { workouts: 0, sets: 0 }; const on = picked && dayKey(picked.date) === dayKey(d);
+            return <button type="button" key={d.getTime()} className={`heat-cell l${level(info.sets, info.workouts)} ${on ? "picked" : ""}`} title={`${fmt(d)}: ${info.workouts ? `${info.sets} series` : "sin entreno"}`} onClick={() => setPicked(on ? null : { date: d, ...info })} />; })}
+        </div>)}
+      </div>
+    </div>
+    <div className="heat-foot">
+      <small className="heat-picked">{picked ? <>{fmt(picked.date)} · {picked.workouts ? <b>{picked.workouts > 1 ? `${picked.workouts} entrenos, ` : ""}{picked.sets} series</b> : "sin entreno"}</> : "Tocá un día para ver el detalle"}</small>
+      <span className="heat-legend">Menos{[0, 1, 2, 3, 4].map((l) => <i key={l} className={`heat-cell l${l}`} />)}Más</span>
+    </div>
+  </section>;
+}
+function MyHeatmap() {
+  const [entries, setEntries] = useState<any[] | null>(null);
+  useEffect(() => { void api("/api/workouts/calendar/").then(setEntries).catch(() => setEntries([])); }, []);
+  return entries ? <TrainingHeatmap entries={entries} /> : null;
+}
 function Workouts() {
   const [rows, setRows] = useState<any[]>([]); const [loaded, setLoaded] = useState(false);
   useEffect(() => { void api("/api/workouts/").then((d) => { setRows(d.results || d); setLoaded(true); }); }, []);
   return <>
     <PageHead eyebrow="Historial" title="Tus entrenamientos" action={<Link className="btn primary" to="/entrenar" aria-label="Nuevo entrenamiento"><Plus size={18} /> Nuevo</Link>} />
+    <MyHeatmap />
     <section className="panel">{rows.length ? <div className="list">{rows.map((w) => { const d = new Date(w.started_at); return <Link className="row link-row" to={`/entrenamiento?id=${w.id}`} key={w.id}><span className="date-tile"><b>{d.getDate()}</b><small>{d.toLocaleDateString("es-AR", { month: "short" }).replace(".", "")}</small></span><span className="row-main">{w.name}<small>{d.toLocaleDateString("es-AR", { weekday: "long" })} · {d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</small></span><strong>{kg(Math.round(w.volume))} <span>kg</span></strong><ChevronRight size={16} className="chev" /></Link>; })}</div> : loaded && <Empty icon={<CalendarDays />} title="Aún no registraste entrenamientos"><Link to="/entrenar" className="btn ghost">Empezar ahora</Link></Empty>}</section>
   </>;
 }
@@ -1123,6 +1165,7 @@ function Profile() {
         <button type="button" className="btn ghost-danger wide" onClick={logout}><LogOut size={17} /> Cerrar sesión</button>
       </section>
       <div className="stack">
+        <MyHeatmap />
         <MyAchievements />
         <section className="panel form">
           <h3>Datos personales</h3>

@@ -1,7 +1,8 @@
 import uuid
+from datetime import timedelta
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.db import transaction
 from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes
@@ -28,6 +29,9 @@ class WorkoutViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Ejercicio no encontrado."}, status=status.HTTP_404_NOT_FOUND)
         obj=WorkoutExercise.objects.create(workout=workout,exercise=exercise,order=workout.exercises.count())
         return Response(WorkoutExerciseSerializer(obj).data,status=201)
+    @action(detail=False,methods=["get"])
+    def calendar(self,request):
+        return Response(training_days(request.user))
     @action(detail=True,methods=["post"],url_path="finish")
     def finish(self,request,pk=None):
         obj=self.get_object(); obj.finished_at=timezone.now(); obj.save(update_fields=["finished_at","updated_at"])
@@ -135,6 +139,15 @@ def import_shared_routine(request, token):
     )
     routine = copy_routine(source, request.user, f"Copia de {source.name}")
     return Response(RoutineSerializer(routine, context={"request": request}).data, status=status.HTTP_201_CREATED)
+
+
+def training_days(user, days=371):
+    """Entrenamientos del último año (fecha y series hechas) para el mapa de calor. El día lo agrupa el cliente en su hora local."""
+    since = timezone.now() - timedelta(days=days)
+    rows = (Workout.objects.filter(user=user, started_at__gte=since)
+            .annotate(set_count=Count("exercises__sets", filter=Q(exercises__sets__completed=True)))
+            .order_by("started_at").values_list("started_at", "set_count"))
+    return [{"started_at": started_at, "sets": sets} for started_at, sets in rows]
 
 
 def copy_routine(source, user, name):
