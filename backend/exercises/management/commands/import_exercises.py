@@ -40,6 +40,10 @@ class Command(BaseCommand):
             raise CommandError(f"No se pudo leer el dataset: {exc}") from exc
 
         created = updated = skipped = errors = 0
+        fields = ["name", "name_es", "slug", "category", "primary_muscles", "secondary_muscles", "equipment", "difficulty", "instructions", "image_1", "image_2", "source", "source_url"]
+        existing = {item.external_id: item for item in Exercise.objects.filter(external_id__isnull=False)}
+        new_items = []
+        changed_items = []
         for row in data:
             external_id = row.get("id")
             name = row.get("name")
@@ -63,10 +67,20 @@ class Command(BaseCommand):
                     "source": "free-exercise-db",
                     "source_url": "https://github.com/yuhonas/free-exercise-db",
                 }
-                _, made = Exercise.objects.update_or_create(external_id=external_id, defaults=defaults)
-                created += int(made)
-                updated += int(not made)
+                item = existing.get(external_id)
+                if item is None:
+                    new_items.append(Exercise(external_id=external_id, **defaults))
+                    created += 1
+                else:
+                    for field, value in defaults.items():
+                        setattr(item, field, value)
+                    changed_items.append(item)
+                    updated += 1
             except Exception as exc:  # pragma: no cover - protects long imports from one bad row
                 errors += 1
                 self.stderr.write(f"error={external_id}: {exc}")
+        if new_items:
+            Exercise.objects.bulk_create(new_items, batch_size=100)
+        if changed_items:
+            Exercise.objects.bulk_update(changed_items, fields, batch_size=100)
         self.stdout.write(f"creados={created} actualizados={updated} omitidos={skipped} errores={errors}")
