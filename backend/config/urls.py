@@ -12,6 +12,7 @@ from exercises.views import ExerciseViewSet, exercise_photo
 from workouts.views import RoutineViewSet, WorkoutViewSet, WorkoutExerciseViewSet, WorkoutSetViewSet, shared_routine, import_shared_routine
 from social.views import AchievementViewSet, MessageViewSet, NotificationViewSet, PostViewSet, ProfileViewSet, post_photo
 from bodymetrics.views import BodyWeightViewSet
+from media_utils import cloudinary_enabled
 from progress.views import dashboard, exercise_progress
 
 router = DefaultRouter()
@@ -38,7 +39,7 @@ def readiness(request):
         connection.ensure_connection()
     except Exception:
         return JsonResponse({"status": "error"}, status=503)
-    return JsonResponse({"status": "ok", "database": "ok"})
+    return JsonResponse({"status": "ok", "database": "ok", "cloudinary": cloudinary_enabled()})
 
 @ensure_csrf_cookie
 @require_GET
