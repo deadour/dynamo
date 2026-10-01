@@ -37,9 +37,22 @@ def friend_ids(user):
     return following_ids(user) & set(Follow.objects.filter(following=user).values_list("follower_id", flat=True))
 
 
+DEMO_DOMAIN = "@demo.dynamo.app"
+
+
+def is_demo(user):
+    return (user.email or "").endswith(DEMO_DOMAIN)
+
+
+def without_demo(qs, viewer, field="email"):
+    """Las cuentas de demo (seed_demo) solo se ven entre ellas: los usuarios reales nunca se las cruzan."""
+    return qs if is_demo(viewer) else qs.exclude(**{f"{field}__endswith": DEMO_DOMAIN})
+
+
 def visible_posts(user):
     """Publicaciones que el usuario puede ver: las suyas, las públicas y las de amigos marcadas "solo amigos"."""
-    return Post.objects.filter(Q(user=user) | Q(visibility="public") | Q(visibility="friends", user_id__in=friend_ids(user)))
+    qs = Post.objects.filter(Q(user=user) | Q(visibility="public") | Q(visibility="friends", user_id__in=friend_ids(user)))
+    return without_demo(qs, user, "user__email")
 
 
 class PostViewSet(viewsets.ModelViewSet):
@@ -150,7 +163,7 @@ class ProfileViewSet(viewsets.ReadOnlyModelViewSet):
     lookup_field = "id"
 
     def get_queryset(self):
-        return User.objects.filter(is_active=True)
+        return without_demo(User.objects.filter(is_active=True), self.request.user)
 
     def _relations(self):
         me = self.request.user

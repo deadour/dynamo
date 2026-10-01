@@ -822,8 +822,9 @@ input[type="date"]::-webkit-datetime-edit { padding: 0; }
 .sheet-foot.single { grid-template-columns: 1fr; }
 .save-ex { position: absolute; right: 8px; bottom: 8px; z-index: 2; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; border: 0; background: rgba(7, 9, 13, .78); color: var(--text); backdrop-filter: blur(6px); cursor: pointer; transition: transform .15s, background .15s; }
 .save-ex:hover { background: var(--accent); color: var(--accent-ink); transform: scale(1.08); }
-.detail-actions { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: auto; }
-.detail-actions .btn { margin: 0; }
+.detail-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; }
+.detail-actions .btn { margin: 0; min-width: 0; padding-left: 12px; padding-right: 12px; white-space: nowrap; }
+@media (max-width: 380px) { .detail-actions .btn { font-size: 14px; } }
 
 .set-line.tappable { cursor: pointer; }
 .set-line.tappable:active { background: var(--surface-3); }
