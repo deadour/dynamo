@@ -385,11 +385,16 @@ function PostList({ posts, setPosts }: { posts: any[]; setPosts: (fn: (old: any[
   return <>{posts.map((p) => <PostCard key={p.id} post={p} onFollowed={followed} onChange={(next) => setPosts((old) => old.map((x) => x.id === next.id ? next : x))} onDelete={() => setPosts((old) => old.filter((x) => x.id !== p.id))} />)}</>;
 }
 function FeedTab({ onFindPeople }: { onFindPeople: () => void }) {
-  const [posts, setPosts] = useState<any[]>([]); const [loaded, setLoaded] = useState(false);
-  useEffect(() => { void api("/api/posts/").then((d) => { setPosts(d.results || d); setLoaded(true); }); }, []);
+  const [posts, setPosts] = useState<any[]>([]); const [loaded, setLoaded] = useState(false); const [suggested, setSuggested] = useState<any[]>([]);
+  const loadPosts = () => void api("/api/posts/").then((d) => { setPosts(d.results || d); setLoaded(true); });
+  useEffect(() => {
+    loadPosts();
+    void api("/api/profiles/?tab=following").then((following) => { if (following.length < 5) void api("/api/profiles/?tab=suggested").then((rows) => setSuggested(rows.slice(0, 10))); }).catch(() => undefined);
+  }, []);
   useEffect(() => { if (!loaded || !window.location.hash.startsWith("#post-")) return; const el = document.getElementById(window.location.hash.slice(1)); if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.classList.add("flash"); } }, [loaded]);
   return <div className="feed">
     <Composer onPosted={(p) => setPosts((old) => [p, ...old])} />
+    <SuggestedPeople people={suggested} title="Gente para seguir" onChange={(p) => { setSuggested((old) => old.map((x) => x.id === p.id ? { ...x, ...p, reason: x.reason } : x)); loadPosts(); }} />
     <PostList posts={posts} setPosts={setPosts} />
     {loaded && !posts.length && <section className="panel"><Empty icon={<Users />} title="Todavía no hay actividad">Seguí a gente para ver cómo entrena, o compartí tu último entrenamiento.<button type="button" className="btn ghost" onClick={onFindPeople}><Search size={16} /> Buscar amigos</button></Empty></section>}
   </div>;
@@ -403,22 +408,41 @@ function PersonRow({ person, onChange }: { person: any; onChange: (p: any) => vo
     {!person.is_me && <button type="button" className={`btn ${person.is_following ? "secondary" : "primary"} follow-btn`} onClick={follow} disabled={busy}>{person.is_friend ? <><Check size={14} /> Amigos</> : person.is_following ? "Siguiendo" : person.follows_you ? "Seguir también" : "Seguir"}</button>}
   </div>;
 }
+// Gente para seguir en tarjetas que se deslizan: lo primero que ves en Personas (y en Actividad si seguís a poca gente).
+function SuggestedPeople({ people, onChange, title = "Sugeridos para vos", hint }: { people: any[]; onChange: (p: any) => void; title?: string; hint?: string }) {
+  const [busy, setBusy] = useState("");
+  if (!people.length) return null;
+  const follow = (p: any) => { setBusy(p.id); void api(`/api/profiles/${p.id}/follow/`, { method: p.is_following ? "DELETE" : "POST" }).then((next) => { onChange({ ...next, reason: p.reason, in_network: p.in_network }); if (!p.is_following) toast(next.is_friend ? `¡Ahora vos y ${firstNameOf(p.name)} son amigos!` : `Seguís a ${firstNameOf(p.name)}`, "👋"); }).catch((e: Error) => toast(e.message, "⚠️")).finally(() => setBusy("")); };
+  return <section className="panel suggested">
+    <div className="section-head"><h3><Sparkles size={15} className="accent" /> {title}</h3></div>
+    {hint && <p className="hint">{hint}</p>}
+    <div className="sugg-row">{people.map((p) => <div className={`sugg-card ${p.in_network ? "net" : ""}`} key={p.id}>
+      <Link to={`/usuario?id=${p.id}`} className="sugg-link"><Avatar user={p} size={58} /><b>{p.name}</b><small>{p.reason}</small></Link>
+      <button type="button" className={`btn ${p.is_following ? "secondary" : "primary"} sugg-btn`} disabled={busy === p.id} onClick={() => follow(p)}>{p.is_friend ? <><Check size={14} /> Amigos</> : p.is_following ? "Siguiendo" : p.follows_you ? "Seguir también" : "Seguir"}</button>
+    </div>)}</div>
+  </section>;
+}
 function PeopleTab() {
   const [query, setQuery] = useState(""); const [results, setResults] = useState<any[]>([]); const [lists, setLists] = useState<any>(null);
   const loadLists = () => Promise.all([api("/api/profiles/"), api("/api/profiles/?tab=followers"), api("/api/profiles/?tab=following")]).then(([friends, followers, following]) => setLists({ friends, followers: followers.filter((p: any) => !p.is_following), following: following.filter((p: any) => !p.is_friend) }));
   const [suggested, setSuggested] = useState<any[]>([]);
   useEffect(() => { void loadLists(); void api("/api/profiles/?tab=suggested").then(setSuggested).catch(() => undefined); }, []);
   useEffect(() => { if (query.trim().length < 2) { setResults([]); return; } const t = setTimeout(() => void api(`/api/profiles/?search=${encodeURIComponent(query.trim())}`).then(setResults), 250); return () => clearTimeout(t); }, [query]);
-  const changed = (p: any) => { setResults((old) => old.map((x) => x.id === p.id ? p : x)); setSuggested((old) => old.map((x) => x.id === p.id ? { ...p, reason: x.reason } : x)); void loadLists(); };
-  const shownSuggested = lists ? suggested.filter((p) => !lists.followers.some((f: any) => f.id === p.id)) : [];
+  const changed = (p: any) => { setResults((old) => old.map((x) => x.id === p.id ? p : x)); setSuggested((old) => old.map((x) => x.id === p.id ? { ...x, ...p, reason: x.reason } : x)); void loadLists(); };
+  const anyNetwork = suggested.some((p) => p.in_network);
   const block = (title: string, rows: any[], hint?: string) => <section className="panel"><div className="section-head"><h3>{title}</h3><span className="pill">{rows.length}</span></div>{hint && <p className="hint">{hint}</p>}<div className="list">{rows.map((p) => <PersonRow key={p.id} person={p} onChange={changed} />)}</div></section>;
   return <div className="people">
     <div className="search"><Search size={18} /><input type="search" aria-label="Buscar personas" placeholder="Buscar por nombre o email…" value={query} onChange={(e) => setQuery(e.target.value)} autoCapitalize="none" autoCorrect="off" /></div>
-    {query.trim().length >= 2 ? <section className="panel">{results.length ? <div className="list">{results.map((p) => <PersonRow key={p.id} person={p} onChange={changed} />)}</div> : <p className="hint">No encontramos a nadie con ese nombre.</p>}</section> : lists && <>
+    {query.trim().length >= 2 ? <>
+      <section className="panel">{results.length ? <div className="list">{results.map((p) => <PersonRow key={p.id} person={p} onChange={changed} />)}</div> : <p className="hint">No encontramos a nadie con ese nombre.</p>}</section>
+      {!results.length && <SuggestedPeople people={suggested} onChange={changed} title="Capaz conocés a" />}
+    </> : <>
+      <SuggestedPeople people={suggested} onChange={changed} hint={anyNetwork ? "Gente que te sigue o que está conectada con quienes seguís." : "Seguí a alguien y te vamos a sugerir gente de su círculo."} />
+      {lists && <>
+      {lists.friends.length ? block("Amigos", lists.friends) : <section className="panel"><Empty icon={<Users />} title="Todavía no tenés amigos acá">Cuando se siguen entre los dos, quedan como amigos y pueden ver sus entrenamientos y rutinas.</Empty></section>}
       {lists.followers.length > 0 && block("Te siguen", lists.followers, "Seguilos también y quedan como amigos.")}
-      {shownSuggested.length > 0 && <section className="panel"><div className="section-head"><h3><Sparkles size={15} className="accent" /> Sugeridos para vos</h3></div><div className="list">{shownSuggested.map((p) => <PersonRow key={p.id} person={p} onChange={changed} />)}</div></section>}
-      {lists.friends.length ? block("Amigos", lists.friends) : <section className="panel"><Empty icon={<Users />} title="Todavía no tenés amigos acá">Buscá a alguien por su nombre. Cuando se siguen entre los dos, quedan como amigos.</Empty></section>}
       {lists.following.length > 0 && block("Siguiendo", lists.following, "Todavía no te siguen.")}
+      </>}
     </>}
   </div>;
 }

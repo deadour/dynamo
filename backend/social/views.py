@@ -183,36 +183,43 @@ class ProfileViewSet(viewsets.ReadOnlyModelViewSet):
             people = self.get_queryset().filter(id__in=following & followers)
         return Response([profile_row(p, me, following, followers) for p in (people if term else people.order_by("name"))])
 
-    def _suggested(self, me, following, followers, limit=12):
-        """Gente para seguir sin buscar: los que siguen las personas que sigo (más conexiones en común primero),
-        los que me siguen y no sigo, y si falta, gente que entrena seguido."""
+    def _suggested(self, me, following, followers, limit=20):
+        """Gente para seguir sin tener que buscar, en este orden:
+        1. conectados con alguien que sigo: los que siguen esas personas o los que las siguen (más conexiones primero);
+        2. los que me siguen y todavía no sigo;
+        3. el resto de la gente, primero los que más entrenaron últimamente (así nunca queda vacío)."""
         skip = following | {me.id}
-        names = {pk: display_name(u) for pk, u in ((u.id, u) for u in self.get_queryset().filter(id__in=following))}
-        via, score = {}, {}
-        for follower_id, target_id in Follow.objects.filter(follower_id__in=following).exclude(following_id__in=skip).values_list("follower_id", "following_id"):
-            score[target_id] = score.get(target_id, 0) + 1
-            via.setdefault(target_id, follower_id)
-        ranked = sorted(score, key=lambda pk: -score[pk])
-        ranked += [pk for pk in followers if pk not in skip and pk not in score]
-        if len(ranked) < limit:
-            since = timezone.now() - timedelta(days=30)
-            active = (self.get_queryset().exclude(id__in=skip | set(ranked))
-                      .annotate(n=Count("workouts", filter=Q(workouts__started_at__gte=since))).filter(n__gt=0).order_by("-n")
-                      .values_list("id", flat=True)[: limit - len(ranked)])
-            ranked += list(active)
-        ranked = ranked[:limit]
-        people = {p.id: p for p in self.get_queryset().filter(id__in=ranked)}
+        names = {u.id: display_name(u) for u in self.get_queryset().filter(id__in=following)}
+        score, followed_by, follows = {}, {}, {}
+        for src, dst in Follow.objects.filter(follower_id__in=following).exclude(following_id__in=skip).values_list("follower_id", "following_id"):
+            score[dst] = score.get(dst, 0) + 2  # lo sigue alguien que sigo: señal más fuerte
+            followed_by.setdefault(dst, src)
+        for src, dst in Follow.objects.filter(following_id__in=following).exclude(follower_id__in=skip).values_list("follower_id", "following_id"):
+            score[src] = score.get(src, 0) + 1  # sigue a alguien que sigo
+            follows.setdefault(src, dst)
+        for pk in followers - skip:
+            score[pk] = score.get(pk, 0) + 3  # me sigue: seguirlo nos hace amigos
+        since = timezone.now() - timedelta(days=30)
+        people = (self.get_queryset().exclude(id__in=skip)
+                  .annotate(recent=Count("workouts", filter=Q(workouts__started_at__gte=since), distinct=True), total=Count("workouts", distinct=True)))
+        # los conectados conmigo + los más activos del resto (sin recorrer toda la base)
+        candidates = list(people.filter(id__in=list(score))) + list(people.exclude(id__in=list(score)).order_by("-recent", "-total", "-created_at")[:limit])
+        ranked = sorted(candidates, key=lambda p: (-score.get(p.id, 0), -p.recent, -p.total, -p.created_at.timestamp()))[:limit]
         rows = []
-        for pk in ranked:
-            if pk not in people:
-                continue
-            row = profile_row(people[pk], me, following, followers)
-            if pk in score:
-                row["reason"] = f"Lo sigue {names.get(via[pk], 'alguien que seguís')}" + (f" y {score[pk] - 1} más" if score[pk] > 1 else "")
-            elif pk in followers:
+        for p in ranked:
+            row = profile_row(p, me, following, followers)
+            connections = (1 if p.id in followed_by else 0) + (1 if p.id in follows else 0)
+            if p.id in followers:
                 row["reason"] = "Te sigue"
+            elif p.id in followed_by:
+                row["reason"] = f"Lo sigue {names.get(followed_by[p.id], 'alguien que seguís')}"
+            elif p.id in follows:
+                row["reason"] = f"Sigue a {names.get(follows[p.id], 'alguien que seguís')}"
+            elif p.recent:
+                row["reason"] = f"{p.recent} {'entreno' if p.recent == 1 else 'entrenos'} este mes"
             else:
-                row["reason"] = "Entrena seguido"
+                row["reason"] = "Nuevo en Dynamo" if (timezone.now() - p.created_at).days < 14 else "En Dynamo"
+            row["in_network"] = bool(connections) or p.id in followers
             rows.append(row)
         return rows
 

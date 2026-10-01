@@ -215,4 +215,18 @@ def test_followers_lists_of_someone_else_and_suggestions(people):
     followers = client.get(f"/api/profiles/?user={tobi.id}&tab=followers").json()
     assert [(p["name"], p["is_me"]) for p in followers] == [("Edu", True)]
     suggested = client.get("/api/profiles/?tab=suggested").json()
-    assert [(p["name"], p["reason"]) for p in suggested] == [("Tomi", "Lo sigue Tobi"), ("Extraño", "Te sigue")]
+    assert [(p["name"], p["reason"]) for p in suggested] == [("Extraño", "Te sigue"), ("Tomi", "Lo sigue Tobi")]
+
+
+@pytest.mark.django_db
+def test_suggestions_include_followers_of_people_i_follow_and_never_empty(people):
+    edu, tobi, tomi, stranger = people["edu"], people["tobi"], people["tomi"], people["extraño"]
+    # sin seguir a nadie igual hay gente para seguir
+    alone = client_for(edu).get("/api/profiles/?tab=suggested").json()
+    assert {p["name"] for p in alone} == {"Tobi", "Tomi", "Extraño"} and all(not p["in_network"] for p in alone)
+    # tomi sigue a tobi, a quien sigo: aparece primero y con el motivo
+    Follow.objects.create(follower=edu, following=tobi)
+    Follow.objects.create(follower=tomi, following=tobi)
+    rows = client_for(edu).get("/api/profiles/?tab=suggested").json()
+    assert (rows[0]["name"], rows[0]["reason"], rows[0]["in_network"]) == ("Tomi", "Sigue a Tobi", True)
+    assert "Tobi" not in [p["name"] for p in rows] and stranger.name in [p["name"] for p in rows]

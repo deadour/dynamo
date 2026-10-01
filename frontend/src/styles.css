@@ -835,6 +835,21 @@ input[type="date"]::-webkit-datetime-edit { padding: 0; }
 .offline { min-height: 100vh; min-height: 100dvh; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 24px; text-align: center; }
 .offline p { max-width: 300px; margin: 0; color: var(--muted); font-size: 14px; }
 
+/* ---------- sugeridos ---------- */
+.suggested { padding-bottom: 14px; min-width: 0; overflow: hidden; }
+.people > *, .feed > * { min-width: 0; }
+.suggested .hint { margin: -6px 0 12px; }
+.sugg-row { display: flex; gap: 10px; overflow-x: auto; margin: 0 -20px; padding: 2px 20px 4px; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.sugg-row::-webkit-scrollbar { display: none; }
+.sugg-card { flex: none; width: 148px; display: grid; gap: 10px; padding: 16px 12px 12px; border-radius: 18px; background: var(--bg); border: 1px solid var(--border); text-align: center; scroll-snap-align: start; transition: border-color .15s, transform .15s; }
+.sugg-card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
+.sugg-card.net { border-color: rgba(182, 243, 106, .28); background: linear-gradient(180deg, rgba(182, 243, 106, .06), var(--bg) 60%); }
+.sugg-link { display: grid; justify-items: center; gap: 6px; min-width: 0; }
+.sugg-link b { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14.5px; }
+.sugg-link small { color: var(--muted); font-size: 12px; line-height: 1.3; min-height: 2.6em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sugg-card.net .sugg-link small { color: var(--accent); }
+.sugg-btn { width: 100%; padding: 8px 10px; font-size: 13px; justify-content: center; }
+
 /* ---------- mapa de calor ---------- */
 .heatmap-panel, .profile-grid > *, .stack > * { min-width: 0; }
 .heat-stats { display: flex; gap: 22px; margin: -4px 0 14px; color: var(--muted); font-size: 12.5px; }
@@ -908,6 +923,8 @@ input[type="date"]::-webkit-datetime-edit { padding: 0; }
   .segmented { max-width: none; }
   .composer-bar .btn { padding: 9px 12px; }
   .user-counts { gap: 20px; }
+  .sugg-row { margin: 0 -16px; padding: 2px 16px 4px; }
+  .sugg-card { width: 140px; }
   .toasts { top: calc(66px + env(safe-area-inset-top)); }
   .sheet-backdrop { place-items: end stretch; padding: 0; }
   .sheet { max-width: none; max-height: 92vh; max-height: 92dvh; border-radius: 22px 22px 0 0; animation: sheet-up .25s ease both; }
