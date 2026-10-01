@@ -16,12 +16,12 @@ const getToken = () => { try { return localStorage.getItem(TOKEN_KEY); } catch {
 const setToken = (value: string | null) => { try { if (value) localStorage.setItem(TOKEN_KEY, value); else localStorage.removeItem(TOKEN_KEY); } catch { /* sin storage: queda la cookie */ } };
 const authHeaders = (): Record<string, string> => { const token = getToken(); return token ? { Authorization: `Token ${token}` } : {}; };
 // El servidor (plan gratis de Render) se duerme si nadie lo usa y tarda hasta ~1 minuto en despertar.
-// Mientras tanto avisamos con un cartel tranquilo y reintentamos las lecturas en vez de fallar.
+// Si una llamada tarda más de 7 s avisamos con un cartel tranquilo, y reintentamos las lecturas en vez de fallar.
 let waiting = 0;
 const setWaking = (delta: number) => { waiting += delta; window.dispatchEvent(new CustomEvent("dynamo:waking", { detail: waiting > 0 })); };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function fetchWaking(url: string, init: RequestInit, retry: boolean) {
-  let shown = false; const slow = setTimeout(() => { shown = true; setWaking(1); }, 2500);
+  let shown = false; const slow = setTimeout(() => { shown = true; setWaking(1); }, 7000);
   try {
     for (let attempt = 0; ; attempt++) {
       try {
