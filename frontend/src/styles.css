@@ -828,6 +828,13 @@ input[type="date"]::-webkit-datetime-edit { padding: 0; }
 .set-line.tappable { cursor: pointer; }
 .set-line.tappable:active { background: var(--surface-3); }
 
+/* ---------- servidor despertando / sin conexión ---------- */
+.waking { position: fixed; left: 50%; top: calc(12px + env(safe-area-inset-top)); z-index: 90; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; width: max-content; max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 999px; background: rgba(14, 19, 26, .95); border: 1px solid var(--border); box-shadow: 0 12px 30px -10px rgba(0, 0, 0, .8); color: var(--muted); font-size: 13px; animation: rise .3s ease both; }
+.waking-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; animation: pulse-dot 1.2s ease-in-out infinite; }
+@keyframes pulse-dot { 0%, 100% { opacity: .35; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.1); } }
+.offline { min-height: 100vh; min-height: 100dvh; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 24px; text-align: center; }
+.offline p { max-width: 300px; margin: 0; color: var(--muted); font-size: 14px; }
+
 /* ---------- mapa de calor ---------- */
 .heatmap-panel, .profile-grid > *, .stack > * { min-width: 0; }
 .heat-stats { display: flex; gap: 22px; margin: -4px 0 14px; color: var(--muted); font-size: 12.5px; }

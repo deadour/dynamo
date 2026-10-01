@@ -15,15 +15,38 @@ const TOKEN_KEY = "dynamo.token";
 const getToken = () => { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } };
 const setToken = (value: string | null) => { try { if (value) localStorage.setItem(TOKEN_KEY, value); else localStorage.removeItem(TOKEN_KEY); } catch { /* sin storage: queda la cookie */ } };
 const authHeaders = (): Record<string, string> => { const token = getToken(); return token ? { Authorization: `Token ${token}` } : {}; };
+// El servidor (plan gratis de Render) se duerme si nadie lo usa y tarda hasta ~1 minuto en despertar.
+// Mientras tanto avisamos con un cartel tranquilo y reintentamos las lecturas en vez de fallar.
+let waiting = 0;
+const setWaking = (delta: number) => { waiting += delta; window.dispatchEvent(new CustomEvent("dynamo:waking", { detail: waiting > 0 })); };
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+async function fetchWaking(url: string, init: RequestInit, retry: boolean) {
+  let shown = false; const slow = setTimeout(() => { shown = true; setWaking(1); }, 2500);
+  try {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const response = await fetch(url, init);
+        // 502/503/504: el proxy de Render responde así mientras el servidor arranca.
+        if (retry && [502, 503, 504].includes(response.status) && attempt < 12) { await sleep(5000); continue; }
+        return response;
+      } catch {
+        if (!retry || attempt >= 12) throw Object.assign(new Error("No hay conexión con el servidor. Probá de nuevo en un ratito."), { status: 0 });
+        await sleep(Math.min(2000 * (attempt + 1), 6000));
+      }
+    }
+  } finally { clearTimeout(slow); if (shown) setWaking(-1); }
+}
+export const wakeServer = () => void fetch(`${API}/health/`).catch(() => undefined);
 export async function api(path: string, options: RequestInit = {}) {
   const method = options.method || "GET"; let csrf: string | undefined;
   // Con token no hace falta CSRF; sin token (primer login) se pide por si hay sesión por cookie.
   if (method !== "GET" && !getToken()) { try { csrf = (await (await fetch(`${API}/csrf/`, { credentials: "include" })).json()).csrfToken; } catch { /* seguimos sin CSRF */ } }
   const isJson = !(options.body instanceof Blob);
-  const response = await fetch(`${API}${path}`, { ...options, credentials: "include", headers: { ...(isJson ? { "Content-Type": "application/json" } : {}), ...(csrf ? { "X-CSRFToken": csrf } : {}), ...authHeaders(), ...(options.headers as Record<string, string> | undefined) } });
+  const init: RequestInit = { ...options, credentials: "include", headers: { ...(isJson ? { "Content-Type": "application/json" } : {}), ...(csrf ? { "X-CSRFToken": csrf } : {}), ...authHeaders(), ...(options.headers as Record<string, string> | undefined) } };
+  const response = await fetchWaking(`${API}${path}`, init, method === "GET");
   // Sesión vencida o bloqueada: se vuelve al login en vez de dejar pantallas vacías.
   if ((response.status === 401 || response.status === 403) && !path.startsWith("/api/auth/") && !path.startsWith("/api/admin/")) { setToken(null); window.dispatchEvent(new Event("dynamo:unauthorized")); }
-  if (!response.ok) { const body = await response.json().catch(() => ({})); const first = body && typeof body === "object" && !body.detail ? Object.values(body).flat()[0] : null; throw new Error(body.detail || (typeof first === "string" ? first : "") || "No se pudo completar la operación"); }
+  if (!response.ok) { const body = await response.json().catch(() => ({})); const first = body && typeof body === "object" && !body.detail ? Object.values(body).flat()[0] : null; throw Object.assign(new Error(body.detail || (typeof first === "string" ? first : "") || "No se pudo completar la operación"), { status: response.status }); }
   const data = response.status === 204 ? null : await response.json();
   if (data && typeof data === "object" && typeof data.token === "string") setToken(data.token);
   return data;
@@ -167,7 +190,9 @@ export function Login({ onLogin }: { onLogin?: (user: any) => void }) {
     </div>
   </div>;
 }
-export function ProtectedRoute({ children }: { children: React.ReactNode }) { const [user, setUser] = useState<unknown>(); useEffect(() => { void api("/api/auth/me/").then(setUser).catch(() => { setToken(null); setUser(null); }); const expire = () => setUser(null); window.addEventListener("dynamo:unauthorized", expire); return () => window.removeEventListener("dynamo:unauthorized", expire); }, []); if (user === undefined) return <Loading label="Cargando Dynamo…" />; return user ? <SetUserContext.Provider value={setUser}><UserContext.Provider value={user}>{children}</UserContext.Provider></SetUserContext.Provider> : <Login onLogin={setUser} />; }
+export function ProtectedRoute({ children }: { children: React.ReactNode }) { const [user, setUser] = useState<unknown>(); useEffect(() => { void api("/api/auth/me/").then(setUser).catch((e: any) => { if (e.status === 401 || e.status === 403 || !getToken()) { setToken(null); setUser(null); } else setUser(false); }); const expire = () => setUser(null); window.addEventListener("dynamo:unauthorized", expire); return () => window.removeEventListener("dynamo:unauthorized", expire); }, []); if (user === undefined) return <Loading label="Cargando Dynamo…" />;
+  if (user === false) return <div className="offline"><Logo size={48} /><strong>No pudimos conectarnos</strong><p>Puede ser tu conexión o que el servidor esté arrancando. Tu sesión sigue abierta.</p><button className="btn primary" onClick={() => window.location.reload()}>Reintentar</button></div>;
+  return user ? <SetUserContext.Provider value={setUser}><UserContext.Provider value={user}>{children}</UserContext.Provider></SetUserContext.Provider> : <Login onLogin={setUser} />; }
 
 // ---------- layout ----------
 const NAV = [
@@ -1309,4 +1334,19 @@ function App() {
   </Routes>;
 }
 const root = document.getElementById("root");
-if (root) createRoot(root).render(<BrowserRouter><App /></BrowserRouter>);
+// Cartel mientras el servidor se despierta (solo si una llamada tarda).
+function WakingBanner() {
+  const [on, setOn] = useState(false);
+  useEffect(() => { const h = (e: Event) => setOn((e as CustomEvent).detail); window.addEventListener("dynamo:waking", h); return () => window.removeEventListener("dynamo:waking", h); }, []);
+  return on ? <div className="waking" role="status"><span className="waking-dot" />Despertando el servidor… puede tardar hasta un minuto</div> : null;
+}
+// Si la app quedó abierta en segundo plano mucho tiempo (típico en el celu), al volver se recarga
+// para traer la última versión y datos frescos, y de paso se despierta el servidor.
+let hiddenAt = 0;
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { hiddenAt = Date.now(); return; }
+  if (hiddenAt && Date.now() - hiddenAt > 30 * 60 * 1000 && !document.querySelector("input:focus, textarea:focus")) window.location.reload();
+  else wakeServer();
+});
+wakeServer();
+if (root) createRoot(root).render(<BrowserRouter><App /><WakingBanner /></BrowserRouter>);
