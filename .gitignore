@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 *.env.local
 datos.txt
 *.sqlite3
@@ -14,3 +16,13 @@ frontend/.vite/
 frontend/.npm-cache/
 backend/staticfiles/
 .DS_Store
+cleanup.md
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+build/
+Thumbs.db
+*.log
