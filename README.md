@@ -134,6 +134,14 @@ cd frontend && npm run build
 
 La integración continua ejecuta `python manage.py check`, verifica migraciones, corre los tests de backend y valida lint, tests y build del frontend.
 
+## Documentación operativa
+
+Las guías de despliegue y almacenamiento de imágenes están en [`docs/`](docs/), separadas del README para mantener el root enfocado en el proyecto:
+
+- [Checklist de despliegue](docs/checklist-despliegue.md)
+- [Despliegue de staging](docs/despliegue-staging.md)
+- [Configuración de Cloudinary](docs/cloudinary.md)
+
 ## Estado
 
 Dynamo es un proyecto personal funcional que continúa evolucionando. La base de registro de entrenamientos, rutinas, peso y progreso está implementada, junto con funciones sociales y una configuración reproducible para desarrollo y despliegue. La autenticación de Google y el almacenamiento de imágenes requieren configurar sus variables de entorno correspondientes.
