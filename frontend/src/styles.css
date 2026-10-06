@@ -829,6 +829,14 @@ input[type="date"]::-webkit-datetime-edit { padding: 0; }
 .set-line.tappable { cursor: pointer; }
 .set-line.tappable:active { background: var(--surface-3); }
 
+/* ---------- firma (solo páginas públicas) ---------- */
+.auth-page, .shared-routine-page { grid-template-rows: 1fr auto; }
+.site-footer { position: relative; z-index: 1; align-self: end; width: 100%; max-width: 1040px; padding: 20px 16px calc(4px + env(safe-area-inset-bottom)); text-align: center; }
+.site-footer p { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; overflow-wrap: anywhere; }
+.site-footer a { color: var(--text); font-weight: 500; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; }
+.site-footer a:hover, .site-footer a:focus-visible { color: var(--accent); text-decoration-color: currentColor; }
+.site-footer a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
 /* ---------- servidor despertando / sin conexión ---------- */
 .waking { position: fixed; left: 50%; top: calc(12px + env(safe-area-inset-top)); z-index: 90; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; width: max-content; max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 999px; background: rgba(14, 19, 26, .95); border: 1px solid var(--border); box-shadow: 0 12px 30px -10px rgba(0, 0, 0, .8); color: var(--muted); font-size: 13px; animation: rise .3s ease both; }
 .waking-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; animation: pulse-dot 1.2s ease-in-out infinite; }

@@ -101,6 +101,10 @@ const SetUserContext = createContext<(user: any) => void>(() => undefined);
 // ---------- piezas visuales ----------
 function Logo({ size = 32 }: { size?: number }) { return <img className="logo-mark" src="/logo-icon.png" alt="" width={size} height={size} />; }
 function Wordmark({ height = 26 }: { height?: number }) { return <img className="wordmark" src="/logo-wordmark.png" alt="Dynamo" height={height} style={{ height }} />; }
+// Firma del autor: solo en las páginas públicas (login y rutina compartida), nunca dentro de la app.
+function SiteFooter() {
+  return <footer className="site-footer"><p>Desarrollado por <a href="https://eduramirez.dev" target="_blank" rel="noopener noreferrer">Eduardo M. Ramírez</a></p></footer>;
+}
 function Loading({ label = "Cargando…" }: { label?: string }) { return <div className="loading"><Logo size={44} /><span>{label}</span></div>; }
 function Empty({ icon, title, children }: { icon: React.ReactNode; title: string; children?: React.ReactNode }) { return <div className="empty"><div className="empty-icon">{icon}</div><strong>{title}</strong>{children}</div>; }
 function PageHead({ title, eyebrow, back, action }: { title: React.ReactNode; eyebrow?: React.ReactNode; back?: string; action?: React.ReactNode }) {
@@ -188,6 +192,7 @@ export function Login({ onLogin }: { onLogin?: (user: any) => void }) {
         {error && <div className="error">{error}</div>}
       </section>
     </div>
+    <SiteFooter />
   </div>;
 }
 export function ProtectedRoute({ children }: { children: React.ReactNode }) { const [user, setUser] = useState<unknown>(); useEffect(() => { void api("/api/auth/me/").then(setUser).catch((e: any) => { if (e.status === 401 || e.status === 403 || !getToken()) { setToken(null); setUser(null); } else setUser(false); }); const expire = () => setUser(null); window.addEventListener("dynamo:unauthorized", expire); return () => window.removeEventListener("dynamo:unauthorized", expire); }, []); if (user === undefined) return <Loading label="Cargando Dynamo…" />;
@@ -1313,9 +1318,9 @@ function SharedRoutine() {
   const params = useParams(); const token = useSearchParams()[0].get("token") || params.token || ""; const navigate = useNavigate(); const [routine, setRoutine] = useState<any>(); const [user, setUser] = useState<any>(); const [busy, setBusy] = useState(false); const [notFound, setNotFound] = useState(false); const [error, setError] = useState("");
   useEffect(() => { void api(`/api/shared-routines/${token}/`).then(setRoutine).catch(() => setNotFound(true)); void api("/api/auth/me/").then(setUser).catch(() => setUser(null)); }, [token]);
   const importRoutine = () => { setBusy(true); setError(""); void api(`/api/shared-routines/${token}/import/`, { method: "POST" }).then(() => navigate("/rutinas")).catch((e: Error) => setError(e.message)).finally(() => setBusy(false)); };
-  if (notFound || !token) return <div className="shared-routine-page"><section className="panel shared-card"><h1>No encontramos esa rutina</h1><p className="hint">El enlace puede estar vencido o ser incorrecto.</p><Link className="btn primary" to="/inicio">Ir a Dynamo</Link></section></div>;
+  if (notFound || !token) return <div className="shared-routine-page"><section className="panel shared-card"><h1>No encontramos esa rutina</h1><p className="hint">El enlace puede estar vencido o ser incorrecto.</p><Link className="btn primary" to="/inicio">Ir a Dynamo</Link></section><SiteFooter /></div>;
   if (!routine) return <Loading label="Cargando rutina…" />;
-  return <div className="shared-routine-page"><section className="panel shared-card"><small>Rutina compartida</small><h1>{routine.name}</h1><p className="hint">Creada por {routine.owner_name}. Podés verla y guardarla en tu cuenta para empezar a entrenar.</p><div className="routine-items">{routine.items.map((it: any) => <div className="routine-item" key={it.id}><ExerciseThumb src={it.image} size={42} /><div className="routine-item-main"><b>{it.exercise_name}</b><small>{it.target_sets || "—"} series · {it.target_reps || "Repeticiones libres"}</small></div></div>)}</div>{error && <div className="error inline">{error}</div>}{user ? <button className="btn primary wide lg" onClick={importRoutine} disabled={busy}>{busy ? "Guardando…" : "Guardar en mis rutinas"}</button> : <Link className="btn primary wide lg" to={`/ingresar?next=${encodeURIComponent(`/rutina-compartida?token=${token}`)}`}>Ingresar para usar esta rutina</Link>}<Link className="shared-back" to="/inicio">Dynamo</Link></section></div>;
+  return <div className="shared-routine-page"><section className="panel shared-card"><small>Rutina compartida</small><h1>{routine.name}</h1><p className="hint">Creada por {routine.owner_name}. Podés verla y guardarla en tu cuenta para empezar a entrenar.</p><div className="routine-items">{routine.items.map((it: any) => <div className="routine-item" key={it.id}><ExerciseThumb src={it.image} size={42} /><div className="routine-item-main"><b>{it.exercise_name}</b><small>{it.target_sets || "—"} series · {it.target_reps || "Repeticiones libres"}</small></div></div>)}</div>{error && <div className="error inline">{error}</div>}{user ? <button className="btn primary wide lg" onClick={importRoutine} disabled={busy}>{busy ? "Guardando…" : "Guardar en mis rutinas"}</button> : <Link className="btn primary wide lg" to={`/ingresar?next=${encodeURIComponent(`/rutina-compartida?token=${token}`)}`}>Ingresar para usar esta rutina</Link>}<Link className="shared-back" to="/inicio">Dynamo</Link></section><SiteFooter /></div>;
 }
 function LegacyRedirect({ to }: { to: string }) { const { id } = useParams(); return <Navigate replace to={id ? `${to}?id=${id}` : to} />; }
 function App() {
