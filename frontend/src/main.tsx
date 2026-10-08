@@ -76,7 +76,9 @@ const GROUPS = [
   { key: "piernas", label: "Piernas", muscles: ["quadriceps", "hamstrings", "glutes", "calves", "adductors", "abductors"] },
   { key: "abdomen", label: "Abdomen", muscles: ["abdominals"] },
 ];
-const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const todayISO = () => isoDay(new Date());
+const yearAgoISO = () => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return isoDay(d); };
 const daysSince = (iso?: string) => iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 864e5)) : null;
 const agoLabel = (days: number | null) => days === null ? "Sin registros" : days === 0 ? "Hoy" : days === 1 ? "Ayer" : `Hace ${days} días`;
 const exerciseName = (item: any) => item.name_es || item.name;
@@ -770,6 +772,8 @@ function WorkoutRecorder() {
   const navState = (useLocation().state as any) || {}; const presetExercise = navState.exercise; const presetRoutine = navState.routine;
   const [workout, setWorkout] = useState<any>(() => JSON.parse(localStorage.getItem(ACTIVE_KEY) || "null"));
   const [blocks, setBlocks] = useState<any[]>([]); const [current, setCurrent] = useState<any>(presetExercise || null);
+  // Fecha del entreno: hoy por defecto; se puede elegir un día anterior si te olvidaste de cargarlo.
+  const [finishDate, setFinishDate] = useState(todayISO()); const [finishing, setFinishing] = useState(false);
   const [routines, setRoutines] = useState<any[]>([]); const [picking, setPicking] = useState(false);
   const suggestions = useSuggestions();
   const [weight, setWeight] = useState(""); const [reps, setReps] = useState(""); const [error, setError] = useState(""); const [added, setAdded] = useState("");
@@ -806,7 +810,8 @@ function WorkoutRecorder() {
     setBlocks((old) => rest.length ? old.map((b) => b.weId === block.weId ? { ...b, sets: rest } : b) : old.filter((b) => b.weId !== block.weId));
   };
   const navigate = useNavigate();
-  const finish = () => void api(`/api/workouts/${workout.id}/finish/`, { method: "POST" }).then((d) => { const id = workout.id; clearActive(); toast("Entrenamiento guardado", "💪"); (d?.unlocked_achievements || []).forEach((a: any) => toast(`Logro desbloqueado: ${a.title}`, a.icon)); navigate(`/entrenamiento?id=${id}`); });
+  const pastDay = finishDate && finishDate !== todayISO();
+  const finish = () => { setFinishing(true); void api(`/api/workouts/${workout.id}/finish/`, { method: "POST", body: JSON.stringify(pastDay ? { date: finishDate } : {}) }).finally(() => setFinishing(false)).then((d) => { const id = workout.id; clearActive(); toast("Entrenamiento guardado", "💪"); (d?.unlocked_achievements || []).forEach((a: any) => toast(`Logro desbloqueado: ${a.title}`, a.icon)); navigate(`/entrenamiento?id=${id}`); }).catch((e: Error) => toast(e.message, "⚠️")); };
   const discard = () => void api(`/api/workouts/${workout.id}/`, { method: "DELETE" }).then(clearActive);
   const allSets = blocks.flatMap((b) => b.sets); const volume = allSets.reduce((sum, s) => sum + Number(s.weight_kg) * Number(s.reps), 0);
   const setsOf = (exerciseId: string) => blocks.find((b) => b.exerciseId === exerciseId)?.sets.length || 0;
@@ -862,12 +867,17 @@ function WorkoutRecorder() {
         <button className="btn primary wide lg" onClick={() => void add()} disabled={!current}>{added ? <><Check size={18} /> {added}</> : <><Plus size={18} /> Agregar serie</>}</button>
       </section>
       <section className="panel">
-        <div className="section-head"><h3>Series de hoy</h3><span className="pill">{allSets.length}</span></div>
+        <div className="section-head"><h3>{pastDay ? "Series" : "Series de hoy"}</h3><span className="pill">{allSets.length}</span></div>
         {blocks.length ? <div className="stack tight">{blocks.map((b) => <div className="set-block" key={b.weId}>
           <button type="button" className="set-block-head" onClick={() => { setCurrent({ id: b.exerciseId, name: b.name }); setPicking(false); }}>{b.name}<small>{b.sets.length} {b.sets.length === 1 ? "serie" : "series"}</small></button>
           {b.sets.map((s: any, i: number) => <EditableSet key={s.id} set={s} index={i} onSaved={(saved) => setBlocks((old) => old.map((x) => x.weId === b.weId ? { ...x, sets: x.sets.map((y: any) => y.id === saved.id ? { ...y, ...saved } : y) } : x))} onDelete={() => void removeSet(b, s.id)} />)}
         </div>)}</div> : <Empty icon={<Activity />} title="Sin series todavía">Elegí un ejercicio y cargá tu primera serie.</Empty>}
-        <button className="btn secondary wide" onClick={finish}><Check size={17} /> Finalizar entrenamiento</button>
+        <div className="finish-box">
+          <label className="finish-date"><CalendarDays size={16} /><span>Fecha del entreno<small>{pastDay ? "Se va a guardar en ese día" : "Si te olvidaste de cargarlo, elegí el día"}</small></span>
+            <input type="date" aria-label="Fecha del entrenamiento" value={finishDate} max={todayISO()} min={yearAgoISO()} onChange={(e) => setFinishDate(e.target.value || todayISO())} />
+          </label>
+          <button className="btn secondary wide" onClick={finish} disabled={finishing}><Check size={17} /> {pastDay ? `Guardar el ${parseDate(finishDate).toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })}` : "Finalizar entrenamiento"}</button>
+        </div>
       </section>
     </div>
   </>;

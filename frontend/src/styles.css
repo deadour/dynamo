@@ -400,7 +400,10 @@ input:disabled { opacity: .55; cursor: not-allowed; }
 .auth-form .btn { margin-top: 4px; }
 .divider { display: flex; align-items: center; gap: 12px; margin: 22px 0 16px; color: var(--faint); font-size: 12px; }
 .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border-strong); }
-.google-button { display: flex; justify-content: center; min-height: 44px; }
+/* El botón de Google es un iframe en modo claro: si la página está en modo oscuro, el navegador le pinta
+   un fondo blanco opaco alrededor. Con el mismo color-scheme el fondo queda transparente. */
+.google-button { display: flex; justify-content: center; min-height: 44px; color-scheme: light; }
+.google-button iframe { color-scheme: light; background: transparent; }
 .auth > .btn { margin-top: 12px; }
 .loading { min-height: 60vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: var(--muted); font-size: 14px; }
 .loading .logo-mark { animation: breathe 1.4s ease-in-out infinite; }
@@ -828,6 +831,16 @@ input[type="date"]::-webkit-datetime-edit { padding: 0; }
 
 .set-line.tappable { cursor: pointer; }
 .set-line.tappable:active { background: var(--surface-3); }
+
+/* ---------- fecha al finalizar un entreno ---------- */
+.finish-box { display: grid; gap: 10px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.finish-date { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; margin: 0; color: var(--text); font-size: 14px; font-weight: 600; }
+.finish-date > svg { color: var(--accent); }
+.finish-date span { display: grid; gap: 1px; min-width: 0; }
+.finish-date small { color: var(--muted); font-size: 12px; font-weight: 400; }
+.finish-date input { width: auto; min-width: 0; margin: 0; padding: 8px 10px; }
+.finish-box .btn { margin: 0; }
+.finish-box .btn::first-letter { text-transform: uppercase; }
 
 /* ---------- firma (solo páginas públicas) ---------- */
 .auth-page, .shared-routine-page { grid-template-rows: 1fr auto; }

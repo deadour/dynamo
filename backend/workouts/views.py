@@ -1,5 +1,5 @@
 import uuid
-from datetime import timedelta
+from datetime import date, timedelta
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.db.models import Count, Q
@@ -34,7 +34,26 @@ class WorkoutViewSet(viewsets.ModelViewSet):
         return Response(training_days(request.user))
     @action(detail=True,methods=["post"],url_path="finish")
     def finish(self,request,pk=None):
-        obj=self.get_object(); obj.finished_at=timezone.now(); obj.save(update_fields=["finished_at","updated_at"])
+        obj=self.get_object(); now=timezone.now()
+        fields=["finished_at","updated_at"]
+        day=request.data.get("date")
+        if day:
+            # Cargar un entreno de otro día (si te olvidaste de registrarlo): se mueve a esa fecha
+            # conservando la hora de inicio y la duración.
+            try:
+                day=date.fromisoformat(str(day))
+            except ValueError:
+                return Response({"date": "Fecha inválida."}, status=status.HTTP_400_BAD_REQUEST)
+            today=timezone.localdate()
+            if day>today:
+                return Response({"date": "No podés cargar un entrenamiento en el futuro."}, status=status.HTTP_400_BAD_REQUEST)
+            if day<today-timedelta(days=365):
+                return Response({"date": "Solo podés cargar entrenamientos del último año."}, status=status.HTTP_400_BAD_REQUEST)
+            duration=max(now-obj.started_at, timedelta(0))
+            obj.started_at=timezone.localtime(obj.started_at).replace(year=day.year, month=day.month, day=day.day)
+            now=min(obj.started_at+duration, timezone.now())
+            fields.append("started_at")
+        obj.finished_at=now; obj.save(update_fields=fields)
         from social.achievements import sync_user_achievements
         unlocked = sync_user_achievements(request.user)
         from social.notifications import notify_achievements
