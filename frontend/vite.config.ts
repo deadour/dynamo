@@ -1,5 +1,8 @@
 import { defineConfig, type Plugin } from 'vite'; import react from '@vitejs/plugin-react';
-import { copyFileSync, mkdirSync } from 'node:fs'; import { join } from 'node:path';
+import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'; import { join } from 'node:path';
+
+// Identificador de cada build: la app lo compara con /version.json para saber si hay un deploy nuevo.
+const BUILD_ID = Date.now().toString(36);
 
 // Rutas de la app. El hosting estático no conoce las rutas de React: sin un archivo real en cada una,
 // recargar la página da "Not Found". Se copia index.html en cada ruta (y como 404.html de respaldo).
@@ -16,8 +19,9 @@ function spaRoutes(): Plugin {
       const index = join(outDir, "index.html");
       for (const route of APP_ROUTES) { mkdirSync(join(outDir, route), { recursive: true }); copyFileSync(index, join(outDir, route, "index.html")); }
       copyFileSync(index, join(outDir, "404.html"));
+      writeFileSync(join(outDir, "version.json"), JSON.stringify({ build: BUILD_ID }));
     },
   };
 }
 
-export default defineConfig({plugins:[react(), spaRoutes()],server:{port:5173},test:{environment:"jsdom",setupFiles:"./src/test-setup.ts"}});
+export default defineConfig({plugins:[react(), spaRoutes()],define:{__BUILD_ID__:JSON.stringify(BUILD_ID)},server:{port:5173},test:{environment:"jsdom",setupFiles:"./src/test-setup.ts"}});

@@ -154,7 +154,7 @@ function AuthBackground() {
 }
 export function Login({ onLogin }: { onLogin?: (user: any) => void }) {
   const navigate = useNavigate(); const [searchParams] = useSearchParams(); const next = searchParams.get("next"); const [error, setError] = useState(""); const googleButton = useRef<HTMLDivElement>(null);
-  const [mode, setMode] = useState<"login" | "register">("login"); const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [name, setName] = useState(""); const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<"login" | "register">(searchParams.get("modo") === "registro" ? "register" : "login"); const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [name, setName] = useState(""); const [busy, setBusy] = useState(false);
   const done = (user: any) => void api("/api/auth/me/").then(() => { onLogin?.(user); navigate(next || "/inicio"); }).catch(() => setError("No pudimos mantener la sesión iniciada. Probá de nuevo."));
   const submit = () => void api("/api/auth/dev_login/", { method: "POST", body: JSON.stringify({ email: "demo@dynamo.local" }) }).then(done).catch((e: Error) => setError(e.message));
   const submitForm = (e: React.FormEvent) => {
@@ -545,7 +545,7 @@ function UserProfile() {
       <div className="section-head"><h3>Vos vs {them} · 30 días</h3></div>
       <div className="versus">{compare.map(([label, mine, theirs, unit]) => { const max = Math.max(mine, theirs, 1); return <div className="vs-row" key={label}>
         <small>{label}</small>
-        <div className={`vs-bar me ${mine >= theirs && mine > 0 ? "lead" : ""}`}><i style={{ width: `${(mine / max) * 100}%` }} /><span>Vos</span><b>{kg(mine)}{unit && ` ${unit}`}</b></div>
+        <div className={`vs-bar me ${mine > theirs ? "lead" : ""}`}><i style={{ width: `${(mine / max) * 100}%` }} /><span>Vos</span><b>{kg(mine)}{unit && ` ${unit}`}</b></div>
         <div className={`vs-bar them ${theirs > mine ? "lead" : ""}`}><i style={{ width: `${(theirs / max) * 100}%` }} /><span>{them}</span><b>{kg(theirs)}{unit && ` ${unit}`}</b></div>
       </div>; })}</div>
     </section>}
@@ -790,6 +790,19 @@ function WorkoutRecorder() {
     setWorkout(active); localStorage.setItem(ACTIVE_KEY, JSON.stringify(active));
     if (withRoutine?.items?.length && !presetExercise) setCurrent({ id: withRoutine.items[0].exercise, name: withRoutine.items[0].exercise_name });
   });
+  // "La última vez": las series de la sesión anterior de este ejercicio, para no tener que acordarse el peso.
+  const [last, setLast] = useState<any>(null);
+  useEffect(() => {
+    setLast(null); if (!current?.id) return;
+    let alive = true;
+    void api(`/api/progress/exercises/${current.id}/last/${workout ? `?exclude=${workout.id}` : ""}`).then((d) => { if (!alive) return; setLast(d);
+      // precarga: la serie que toca según la vez anterior (o la última de hoy si ya hiciste más)
+      const today = blocks.find((b) => b.exerciseId === current.id)?.sets || [];
+      const ref = d?.sets?.[today.length] || today[today.length - 1] || d?.sets?.[d.sets.length - 1];
+      if (ref) { setWeight(String(Number(ref.weight_kg))); setReps(String(ref.reps)); } else { setWeight(""); setReps(""); }
+    }).catch(() => undefined);
+    return () => { alive = false; };
+  }, [current?.id, workout?.id]);
   const add = async () => {
     if (!current) return setError("Elegí un ejercicio primero.");
     if (!(Number(reps) > 0) || weight === "" || Number(weight) < 0) return setError("Completá peso y repeticiones.");
@@ -801,6 +814,7 @@ function WorkoutRecorder() {
       const updated = { ...block, sets: [...block.sets, set] };
       setBlocks((old) => old.some((b) => b.weId === updated.weId) ? old.map((b) => b.weId === updated.weId ? updated : b) : [...old, updated]);
       setAdded(`Serie ${updated.sets.length} guardada`); setTimeout(() => setAdded(""), 2500);
+      const next = last?.sets?.[updated.sets.length]; if (next) { setWeight(String(next.weight_kg)); setReps(String(next.reps)); }
     } catch (e) { setError((e as Error).message); }
   };
   const removeSet = async (block: any, setId: string) => {
@@ -858,6 +872,10 @@ function WorkoutRecorder() {
         </div>}
         {current && !picking ? <div className="current-exercise"><span className="row-icon"><Dumbbell size={17} /></span><div><small>Ejercicio</small><b>{current.name}</b></div><button type="button" className="btn secondary" onClick={() => setPicking(true)}>{routine ? "Otro" : "Cambiar"}</button></div>
           : <>{picking && <button type="button" className="link-btn back-link" onClick={() => setPicking(false)}><ArrowLeft size={14} /> Volver{routine ? " a la rutina" : ""}</button>}<ExercisePicker suggestions={suggestions} onPick={pick} /></>}
+        {last?.sets?.length > 0 && <div className="last-time">
+          <small><History size={13} /> La última vez · {new Date(last.date).toLocaleDateString("es-AR", { weekday: "short", day: "numeric", month: "short" })}</small>
+          <div>{last.sets.map((s: any, i: number) => <button type="button" key={i} title="Usar estos valores" onClick={() => { setWeight(String(s.weight_kg)); setReps(String(s.reps)); }}>{kg(s.weight_kg)}<em>×</em>{s.reps}</button>)}</div>
+        </div>}
         <div className="grid two">
           <label>Peso<div className="input-suffix"><input inputMode="decimal" enterKeyHint="next" value={weight} onChange={(e) => setWeight(e.target.value.replace(",", "."))} placeholder="0" /><span>kg</span></div></label>
           <label>Repeticiones<div className="input-suffix"><input inputMode="numeric" enterKeyHint="done" value={reps} onChange={(e) => setReps(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void add()} placeholder="0" /><span>reps</span></div></label>
@@ -1333,8 +1351,105 @@ function SharedRoutine() {
   return <div className="shared-routine-page"><section className="panel shared-card"><small>Rutina compartida</small><h1>{routine.name}</h1><p className="hint">Creada por {routine.owner_name}. Podés verla y guardarla en tu cuenta para empezar a entrenar.</p><div className="routine-items">{routine.items.map((it: any) => <div className="routine-item" key={it.id}><ExerciseThumb src={it.image} size={42} /><div className="routine-item-main"><b>{it.exercise_name}</b><small>{it.target_sets || "—"} series · {it.target_reps || "Repeticiones libres"}</small></div></div>)}</div>{error && <div className="error inline">{error}</div>}{user ? <button className="btn primary wide lg" onClick={importRoutine} disabled={busy}>{busy ? "Guardando…" : "Guardar en mis rutinas"}</button> : <Link className="btn primary wide lg" to={`/ingresar?next=${encodeURIComponent(`/rutina-compartida?token=${token}`)}`}>Ingresar para usar esta rutina</Link>}<Link className="shared-back" to="/inicio">Dynamo</Link></section><SiteFooter /></div>;
 }
 function LegacyRedirect({ to }: { to: string }) { const { id } = useParams(); return <Navigate replace to={id ? `${to}?id=${id}` : to} />; }
+// ---------- landing (página pública de inicio) ----------
+function Phone({ src, alt, className = "", eager = false }: { src: string; alt: string; className?: string; eager?: boolean }) {
+  return <div className={`phone ${className}`}><div className="phone-screen"><span className="phone-status"><b>9:41</b><i /></span><img src={src} alt={alt} width={390} height={844} loading={eager ? "eager" : "lazy"} decoding="async" /></div></div>;
+}
+// Aparece suave al entrar en pantalla (sin animación si la persona la desactivó en el sistema).
+function useReveal() {
+  useEffect(() => {
+    const items = document.querySelectorAll(".reveal");
+    if (!("IntersectionObserver" in window)) { items.forEach((el) => el.classList.add("in")); return; }
+    const io = new IntersectionObserver((entries) => entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { rootMargin: "0px 0px -12% 0px" });
+    items.forEach((el) => io.observe(el)); return () => io.disconnect();
+  }, []);
+}
+const LANDING_FEATURES = [
+  { id: "entrenar", eyebrow: "Entrenar", title: <>Llegás a la máquina y ya sabés <span className="accent">cuánto poner</span>.</>,
+    text: "Elegís la rutina del día y vas anotando. En cada ejercicio te aparece lo que hiciste la última vez, y el peso y las repes ya vienen cargados: si hoy subís, lo cambiás y listo.",
+    points: ["La última vez de cada ejercicio, a un toque", "Rutinas con series y repes objetivo", "Te sugiere primero lo que más hacés", "Más de 800 ejercicios en español, con fotos, y podés crear los tuyos"],
+    shots: [{ src: "/landing/entrenar.jpg", alt: "Pantalla de entrenamiento con la última vez y las series de hoy" }] },
+  { id: "progreso", eyebrow: "Progreso", title: <>Progreso de verdad, <span className="accent">no sensaciones</span>.</>,
+    text: "Cada ejercicio tiene su historia: tu mejor peso, tu 1RM estimado y cómo fue cambiando sesión a sesión. Si te equivocaste al anotar, se edita en un segundo.",
+    points: ["Gráfico por sesión de cada ejercicio", "Récords y 1RM estimado", "Historial completo, editable", "Cómo se hace cada ejercicio, con imágenes"],
+    shots: [{ src: "/landing/progreso.jpg", alt: "Progreso de la sentadilla: mejor peso, 1RM y gráfico" }, { src: "/landing/ejercicio.jpg", alt: "Detalle de un ejercicio con foto y músculos" }] },
+  { id: "amigos", eyebrow: "Con amigos", title: <>Entrená con tus amigos, <span className="accent">aunque no vayan a tu gym</span>.</>,
+    text: "Si se siguen entre los dos, quedan como amigos: ven cuánto entrenó cada uno en el último mes, se pasan rutinas y se guardan las del otro con un toque.",
+    points: ["Vos vs tu amigo, últimos 30 días", "Mirá y guardá las rutinas de tus amigos", "Actividad con likes, comentarios y mensajes", "Vos elegís qué es público y qué ven solo tus amigos"],
+    shots: [{ src: "/landing/amigo.jpg", alt: "Perfil de un amigo con la comparación de los últimos 30 días" }, { src: "/landing/rutinas-amigo.jpg", alt: "Rutinas de un amigo, con el detalle de los ejercicios" }] },
+  { id: "constancia", eyebrow: "Constancia", title: <>Que se vea <span className="accent">cada día que fuiste</span>.</>,
+    text: "Un calendario tipo GitHub con los días que entrenaste: cuanto más hiciste, más verde. Cuenta las semanas seguidas y van saliendo logros a medida que avanzás.",
+    points: ["Calendario de días entrenados del último año", "Racha de semanas seguidas", "Logros que se desbloquean solos", "Notificaciones tranquilas, sin spam"],
+    shots: [{ src: "/landing/constancia.jpg", alt: "Calendario de días entrenados y logros" }] },
+  { id: "peso", eyebrow: "Peso corporal", title: <>Tu peso y tus fotos, <span className="accent">solo para vos</span>.</>,
+    text: "Registrá tu peso y mirá la tendencia. Si querés, sumá fotos de progreso: son privadas y no las ve nadie más, ni tus amigos.",
+    points: ["Evolución del peso en un gráfico", "Fotos de progreso privadas", "Cargá registros de días anteriores"],
+    shots: [{ src: "/landing/peso.jpg", alt: "Peso corporal con su evolución" }] },
+];
+const LANDING_EXTRAS: [React.ReactNode, string, string][] = [
+  [<Dumbbell size={18} />, "Pensada para el celu", "Se usa con una mano entre serie y serie. Agregala a tu pantalla de inicio y queda como una app."],
+  [<CalendarDays size={18} />, "¿Te olvidaste de anotar?", "Cargás el entreno en el día que fue, aunque sea de la semana pasada."],
+  [<Share2 size={18} />, "Rutinas por link", "Compartí una rutina con cualquiera: la abre y se la guarda en su cuenta."],
+  [<Search size={18} />, "Buscás como hablás", "En español y sin pelearte con las tildes: «biceps» encuentra «bíceps»."],
+  [<Lock size={18} />, "Tus datos son tuyos", "Tus entrenos los ven solo tus amigos. Tus fotos, solo vos."],
+  [<Sparkles size={18} />, "Gratis", "Es un proyecto personal que sigue creciendo. Sin anuncios."],
+];
+function Landing() {
+  useReveal();
+  const logged = !!getToken();
+  const primary = logged ? <Link className="btn primary lg" to="/inicio">Abrir Dynamo <ChevronRight size={18} /></Link> : <Link className="btn primary lg" to="/ingresar?modo=registro">Crear cuenta gratis <ChevronRight size={18} /></Link>;
+  useEffect(() => { document.title = "Dynamo · Tu registro de gimnasio"; return () => { document.title = "Dynamo"; }; }, []);
+  return <div className="landing">
+    <header className="landing-nav">
+      <Link to="/" className="brand" aria-label="Dynamo"><Logo size={32} /><Wordmark height={20} /></Link>
+      <nav aria-label="Secciones">{LANDING_FEATURES.slice(0, 4).map((f) => <a key={f.id} href={`#${f.id}`}>{f.eyebrow}</a>)}</nav>
+      {logged ? <Link className="btn secondary" to="/inicio">Abrir la app</Link> : <Link className="btn secondary" to="/ingresar">Ingresar</Link>}
+    </header>
+
+    <section className="landing-hero">
+      <div className="hero-copy">
+        <span className="eyebrow-pill"><span className="pulse-dot" /> Tu registro de gimnasio</span>
+        <h1>¿Cuánto levantaste <span className="accent">la última vez</span>?</h1>
+        <p className="lead">Dynamo se acuerda por vos. Anotás tus series mientras entrenás y ves, ejercicio por ejercicio, si de verdad estás progresando.</p>
+        <div className="hero-ctas">{primary}{!logged && <Link className="btn ghost lg" to="/ingresar">Ya tengo cuenta</Link>}</div>
+        <ul className="hero-facts"><li><Check size={14} /> Gratis</li><li><Check size={14} /> En español</li><li><Check size={14} /> Hecha para el celu</li></ul>
+      </div>
+      <div className="hero-phones" aria-hidden="true">
+        <Phone src="/landing/progreso.jpg" alt="" className="side left" eager />
+        <Phone src="/landing/inicio.jpg" alt="" className="main" eager />
+        <Phone src="/landing/amigo.jpg" alt="" className="side right" eager />
+        <div className="float-chip one"><History size={14} /> La última vez <b>115 × 8</b></div>
+        <div className="float-chip two"><TrendingUp size={14} /> Sentadilla <b>+45 kg</b></div>
+      </div>
+    </section>
+
+    {LANDING_FEATURES.map((f, i) => <section className={`feature reveal ${i % 2 ? "flip" : ""}`} id={f.id} key={f.id}>
+      <div className="feature-copy">
+        <span className="feature-eyebrow">{String(i + 1).padStart(2, "0")} · {f.eyebrow}</span>
+        <h2>{f.title}</h2>
+        <p>{f.text}</p>
+        <ul>{f.points.map((p) => <li key={p}><span><Check size={13} /></span>{p}</li>)}</ul>
+      </div>
+      <div className={`feature-shots n${f.shots.length}`}>{f.shots.map((s) => <Phone key={s.src} src={s.src} alt={s.alt} />)}</div>
+    </section>)}
+
+    <section className="extras reveal">
+      <h2>Y un par de cosas más</h2>
+      <div className="extras-grid">{LANDING_EXTRAS.map(([icon, title, text]) => <div className="extra" key={title}><span className="extra-icon">{icon}</span><b>{title}</b><p>{text}</p></div>)}</div>
+    </section>
+
+    <section className="landing-cta reveal">
+      <Logo size={56} />
+      <h2>La próxima vez que vayas, <span className="accent">anotalo</span>.</h2>
+      <p>Te lleva un minuto crear la cuenta. Con email o con Google.</p>
+      {primary}
+    </section>
+    <SiteFooter />
+  </div>;
+}
 function App() {
   return <Routes>
+    <Route path="/" element={<Landing />} />
     <Route path="/ingresar" element={<Login />} />
     <Route path="/rutina-compartida" element={<SharedRoutine />} />
     <Route path="/rutina-compartida/:token" element={<SharedRoutine />} />
@@ -1379,13 +1494,26 @@ function WakingBanner() {
   useEffect(() => { const h = (e: Event) => setOn((e as CustomEvent).detail); window.addEventListener("dynamo:waking", h); return () => window.removeEventListener("dynamo:waking", h); }, []);
   return on ? <div className="waking" role="status"><span className="waking-dot" />Despertando el servidor… puede tardar hasta un minuto</div> : null;
 }
-// Si la app quedó abierta en segundo plano mucho tiempo (típico en el celu), al volver se recarga
-// para traer la última versión y datos frescos, y de paso se despierta el servidor.
+// Mantener la app al día. El celu deja la página "congelada" en segundo plano y la retoma días después con
+// código viejo; y justo después de un deploy la CDN puede servir un rato el HTML anterior. Entonces:
+// - si estuvo oculta más de 30 min, al volver se recarga (versión y datos frescos);
+// - al volver y cada 10 min se fija en /version.json si hay un deploy nuevo, y si lo hay se recarga.
+declare const __BUILD_ID__: string;
+const typing = () => !!document.querySelector("input:focus, textarea:focus, select:focus");
+const freshReload = () => { const url = new URL(window.location.href); url.searchParams.set("v", Date.now().toString(36)); window.location.replace(url.toString()); };
+const checkVersion = () => {
+  if (!import.meta.env.PROD || typing()) return;
+  void fetch(`/version.json?t=${Date.now()}`, { cache: "no-store" }).then((r) => r.ok ? r.json() : null).then((v) => { if (v?.build && v.build !== __BUILD_ID__) freshReload(); }).catch(() => undefined);
+};
+// el parámetro ?v= solo sirve para saltear la caché: se saca de la barra de direcciones
+if (new URLSearchParams(window.location.search).has("v")) { const url = new URL(window.location.href); url.searchParams.delete("v"); window.history.replaceState(window.history.state, "", url.toString()); }
+try { sessionStorage.removeItem("dynamo.assetRetry"); } catch { /* sin storage */ }
 let hiddenAt = 0;
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) { hiddenAt = Date.now(); return; }
-  if (hiddenAt && Date.now() - hiddenAt > 30 * 60 * 1000 && !document.querySelector("input:focus, textarea:focus")) window.location.reload();
-  else wakeServer();
+  if (hiddenAt && Date.now() - hiddenAt > 30 * 60 * 1000 && !typing()) return freshReload();
+  wakeServer(); checkVersion();
 });
+setInterval(() => { if (!document.hidden) checkVersion(); }, 10 * 60 * 1000);
 wakeServer();
 if (root) createRoot(root).render(<BrowserRouter><App /><WakingBanner /></BrowserRouter>);

@@ -5,6 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#07090d" />
     <title>Dynamo</title>
+    <meta name="description" content="Tu registro de gimnasio: anotá tus series mientras entrenás, mirá tu progreso real y entrená con amigos." />
+    <meta property="og:title" content="Dynamo · Tu registro de gimnasio" />
+    <meta property="og:description" content="¿Cuánto levantaste la última vez? Dynamo se acuerda por vos." />
+    <meta property="og:image" content="/landing/entrenar.jpg" />
+    <script>
+      // Si falla la carga de los archivos de la app (HTML viejo en caché después de un deploy), recarga una vez salteando la caché.
+      addEventListener("error", function (e) {
+        var t = e.target, src = t && (t.src || t.href);
+        if (!src || src.indexOf("/assets/") < 0) return;
+        try { if (sessionStorage.getItem("dynamo.assetRetry")) return; sessionStorage.setItem("dynamo.assetRetry", "1"); } catch (x) { return; }
+        var u = new URL(location.href); u.searchParams.set("v", Date.now().toString(36)); location.replace(u.toString());
+      }, true);
+    </script>
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />

@@ -4,7 +4,7 @@ from django.db.models import Q
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
-from workouts.models import Workout, WorkoutSet
+from workouts.models import Workout, WorkoutExercise, WorkoutSet
 from exercises.models import Exercise
 from bodymetrics.models import BodyWeight
 from .services import epley, exercise_stats
@@ -34,3 +34,17 @@ def dashboard(request):
         "prs": {"best_weight": best_weight, "best_1rm": best_1rm},
         "recent_workouts": [{"id": str(w.id), "name": w.name, "date": w.started_at.date(), "volume": sum(float(s.weight_kg) * s.reps for e in w.exercises.all() for s in e.sets.all() if s.completed)} for w in workouts[:5]],
     })
+
+@api_view(["GET"])
+def exercise_last(request, exercise_id):
+    """Las series de la última vez que la persona hizo este ejercicio (sin contar el entreno en curso)."""
+    rows = WorkoutExercise.objects.filter(workout__user=request.user, exercise_id=exercise_id, sets__completed=True)
+    exclude = request.query_params.get("exclude")
+    if exclude:
+        rows = rows.exclude(workout_id=exclude)
+    last = rows.select_related("workout").order_by("-workout__started_at").first()
+    if last is None:
+        return Response({"date": None, "sets": []})
+    sets = last.sets.filter(completed=True).order_by("set_number", "created_at")
+    return Response({"date": last.workout.started_at, "workout_name": last.workout.name,
+                     "sets": [{"weight_kg": float(s.weight_kg), "reps": s.reps} for s in sets]})

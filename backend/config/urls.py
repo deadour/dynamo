@@ -13,7 +13,7 @@ from workouts.views import RoutineViewSet, WorkoutViewSet, WorkoutExerciseViewSe
 from social.views import AchievementViewSet, MessageViewSet, NotificationViewSet, PostViewSet, ProfileViewSet, post_photo
 from bodymetrics.views import BodyWeightViewSet
 from media_utils import cloudinary_enabled
-from progress.views import dashboard, exercise_progress
+from progress.views import dashboard, exercise_last, exercise_progress
 
 router = DefaultRouter()
 router.register("auth", AuthViewSet, basename="auth")
@@ -46,4 +46,4 @@ def readiness(request):
 def csrf(request):
     return JsonResponse({"status": "ok", "csrfToken": get_token(request)})
 
-urlpatterns = [path("health/", health), path("readiness/", readiness), path("csrf/", csrf), path("api/", include(router.urls)), path("api/avatars/<uuid:user_id>/", avatar_image, name="user-avatar"), path("api/exercise-photos/<uuid:exercise_id>/", exercise_photo, name="exercise-photo"), path("api/post-photos/<uuid:post_id>/", post_photo, name="post-photo"), path("api/shared-routines/<uuid:token>/", shared_routine, name="shared-routine"), path("api/shared-routines/<uuid:token>/import/", import_shared_routine, name="import-shared-routine"), path("api/dashboard/summary/", dashboard), path("api/progress/exercises/<uuid:exercise_id>/", exercise_progress), path("api/schema/", SpectacularAPIView.as_view()), path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"))]
+urlpatterns = [path("health/", health), path("readiness/", readiness), path("csrf/", csrf), path("api/", include(router.urls)), path("api/avatars/<uuid:user_id>/", avatar_image, name="user-avatar"), path("api/exercise-photos/<uuid:exercise_id>/", exercise_photo, name="exercise-photo"), path("api/post-photos/<uuid:post_id>/", post_photo, name="post-photo"), path("api/shared-routines/<uuid:token>/", shared_routine, name="shared-routine"), path("api/shared-routines/<uuid:token>/import/", import_shared_routine, name="import-shared-routine"), path("api/dashboard/summary/", dashboard), path("api/progress/exercises/<uuid:exercise_id>/", exercise_progress), path("api/progress/exercises/<uuid:exercise_id>/last/", exercise_last), path("api/schema/", SpectacularAPIView.as_view()), path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"))]
